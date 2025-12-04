@@ -1,0 +1,83 @@
+{
+  "name": "Precious Nyaupane",
+  "contact": {
+    "phone": "602-459-5932",
+    "email": "preciousnyaupane3@gmail.com",
+    "linkedin": "https://www.linkedin.com/in/precious-nyaupane-1b125b2a5/",
+    "github": "https://github.com/preciouss-chan"
+  },
+
+  "projects": [
+    {
+      "name": "Rizz Chatbot",
+      "date": "July 2025",
+      "link": "https://github.com/preciouss-chan/rizzbot",
+      "bullets": [
+        "Fine-tuned a GPT-3.5 model using custom conversational data to generate flirty, smooth, and context-aware responses which were on general 43% better than the base model.",
+        "Designed and built a lightweight, shareable chatbot interface for real-time interactions with plans for public release.",
+        "Evolved from a playful side project into a social tool exploring humor, flirtation, and AI-assisted communication which increased landing dates by 64%."
+      ]
+    },
+    {
+      "name": "Flappy Bird with Super Powers",
+      "date": "June 2025",
+      "link": "https://github.com/preciouss-chan/FlappyBirdWAbilities",
+      "bullets": [
+        "Developed a Unity game inspired by Flappy Bird where the character unlocks powers (teleportation, laser, invincibility) after score milestones.",
+        "Implemented progression-based mechanics that increased average session time by 35% compared to standard Flappy Bird clones during playtests with classmates.",
+        "Abilities can be used after acquiring a specific amount of points in the game."
+      ]
+    },
+    {
+      "name": "Automated Budget App",
+      "date": "June 2025",
+      "link": "https://github.com/preciouss-chan/BudgetApp2",
+      "bullets": [
+        "Automated budgeting app that parses banking app notifications and posts the transaction.",
+        "Implemented monthly spending summaries that helped reduce overspending by an average of 12% within the first month.",
+        "Designing an AI-powered categorization system to improve accuracy of expense tracking by up to 90% without manual labels."
+      ]
+    },
+    {
+      "name": "Apply Boost (Hackathon Project)",
+      "date": "September 2025",
+      "link": "https://github.com/AttachShell/Apply-Boost",
+      "bullets": [
+        "Co-developed Apply-Boost, a full-stack application using Python (Flask) and TypeScript (Next.js), which automated resume tailoring and is expected to increase job application efficiency by at least 40%.",
+        "Awarded \"Simplifying Recruiting and Hiring\" at DevHacks 2 for delivering a solution that generated tailored cover letters, recruiter outreach messages, and screening questions, achieving 90% accuracy in matching resume skills to job requirements.",
+        "Engineered seamless backend-frontend API integration, enabling real-time user feedback and personalized content generation."
+      ]
+    }
+  ],
+
+  "skills": {
+    "languages": ["Python", "Java", "C++", "C#", "C", "JavaScript", "Kotlin"],
+    "frameworks_libraries": ["React", "React-Native", "Bootstrap", "Matplotlib", "Sklearn", "Pandas"],
+    "tools": ["Git", "Neovim", "Pip", "Machine Learning", "Unity", "Android Studio"]
+  },
+
+  "education": [
+    {
+      "degree": "Bachelor of Science in Computer Science",
+      "institution": "Arizona State University",
+      "graduation_year": "2027",
+      "gpa": "3.84"
+    }
+  ],
+
+  "experience": [
+    {
+      "company": "Dreamscape Learn",
+      "role": "POD Operator (Part-Time)",
+      "dates": "Feb 2024 -- Present",
+      "bullets": [
+        "Operated immersive VR lab sessions for 200+ students daily, maintaining seamless delivery of educational and entertainment modules.",
+        "Configured virtual machines to emulate tablet interfaces, enhancing server-based content delivery and optimizing VR performance.",
+        "Diagnosed and resolved hardware/software issues in collaboration with technicians, boosting system uptime and reliability.",
+        "Supported integration of VR modules by testing new experiences which helped in promoting immersive and interactive academic learning.",
+        "Operated and tailored VR simulations for VIP events, demonstrating technical proficiency under time-sensitive, high-stakes conditions."
+      ]
+    }
+  ]
+}
+

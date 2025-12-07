@@ -223,6 +223,7 @@ export default function TailorPage() {
                   >
                     Download LaTeX (.tex)
                   </button>
+
                   <button
                     onClick={async () => {
                       try {
@@ -232,43 +233,32 @@ export default function TailorPage() {
                           body: JSON.stringify(mergedResume),
                         });
 
-                        // Check response type before downloading
-                        const contentType = res.headers.get("content-type") || "";
-                        console.log("PDF content type:", contentType);
+                        const contentType = res.headers.get("content-type") ?? "";
 
-                        // If the API returned JSON instead of PDF, log the error
                         if (!contentType.includes("pdf")) {
                           const errorText = await res.text();
-                          console.error("PDF ERROR RESPONSE:", errorText);
-                          alert("PDF generation failed!\nSee console for details.");
+                          console.error("PDF ERROR:", errorText);
+                          alert("PDF FAILED — Check console");
                           return;
                         }
 
-                        // Otherwise, download the PDF
                         const blob = await res.blob();
-                        console.log("PDF blob size:", blob.size);
 
-                        if (blob.size === 0) {
-                          alert("Got an empty PDF (0 bytes). Check API logs.");
-                          return;
-                        }
-
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = "resume.pdf";
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      } catch (err) {
-                        console.error("PDF download error:", err);
-                        alert("PDF generation crashed — check console.");
-                      }
-                    }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded"
-                  >
-                    Download PDF
-                  </button>
-
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "resume.pdf";
+              a.click();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              console.error(err);
+              alert("Something went wrong generating PDF");
+            }
+          }}
+          className="px-4 py-2 bg-blue-600 text-white rounded"
+        >
+          Download PDF
+        </button>
 
 
                 </div>

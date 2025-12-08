@@ -74,7 +74,7 @@ export default function TailorPage() {
 
         {/* Job Description Input */}
         <label className="block mb-2 text-sm font-medium text-gray-700">
-          Job Description (paste raw text or JSON with {"{ jobDescription: \"...\" }"})
+          Job Description
         </label>
         <textarea
           className="w-full h-48 p-4 border rounded-lg outline-none focus:ring-2 focus:ring-blue-400 placeholder-gray-500 text-gray-900"
@@ -106,74 +106,42 @@ export default function TailorPage() {
             Clear
           </button>
 
-          {result && (
-            <button
-              onClick={() => setShowRaw(!showRaw)}
-              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-            >
-              {showRaw ? "Hide Raw JSON" : "Show Raw JSON"}
-            </button>
-          )}
+          
         </div>
 
         {/* Error message */}
         {error && <p className="mt-4 text-red-600 font-medium">{error}</p>}
 
-        {/* Raw JSON Viewer */}
-        {showRaw && result && (
-          <div className="mt-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">
-              Raw JSON Response
-            </h2>
-            <pre className="bg-gray-900 text-green-200 p-4 rounded-lg overflow-auto text-sm whitespace-pre-wrap">
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          </div>
-        )}
-
         {/* Formatted Output Sections */}
         {result && !showRaw && (
           <div className="mt-10 space-y-8 text-gray-900">
-            {/* Experience Edits */}
-            <section>
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold">Experience Edits</h2>
-                <button
-                  onClick={() =>
-                    copy(JSON.stringify(result.experience_edits || {}, null, 2))
-                  }
-                  className="text-blue-600 hover:underline"
-                >
-                  Copy
-                </button>
-              </div>
-
-              <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm">
-                {result.experience_edits &&
-                Object.keys(result.experience_edits).length > 0 ? (
-                  <pre className="whitespace-pre-wrap">
-                    {JSON.stringify(result.experience_edits, null, 2)}
-                  </pre>
-                ) : (
-                  <p className="text-gray-500">No experience edits returned.</p>
-                )}
-              </div>
-            </section>
+            
 
             {/* Skills to Add */}
             <section>
               <h2 className="text-xl font-semibold">Skills to Add</h2>
+
               <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm">
                 {result.skills_to_add &&
                 Object.values(result.skills_to_add).some(
                   (arr: any) => arr && arr.length > 0
                 ) ? (
-                  <pre>{JSON.stringify(result.skills_to_add, null, 2)}</pre>
+                  <div className="space-y-2">
+                    {Object.entries(result.skills_to_add).map(([category, items]: any) =>
+                      items && items.length > 0 ? (
+                        <div key={category}>
+                          <span className="font-semibold capitalize">{category}:</span>{" "}
+                          {items.join(", ")}
+                        </div>
+                      ) : null
+                    )}
+                  </div>
                 ) : (
                   <p className="text-gray-500">No additional skills suggested.</p>
                 )}
               </div>
             </section>
+
 
             {/* Cover Letter */}
             <section>
@@ -203,62 +171,40 @@ export default function TailorPage() {
                 </div>
                 <div className="flex gap-3 mt-4">
 
-                  <button
-                    onClick={async () => {
-                      const res = await fetch("/api/export/latex", {
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch("/api/export/pdf", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(mergedResume),
                       });
 
+                      const contentType = res.headers.get("content-type") ?? "";
+
+                      if (!contentType.includes("pdf")) {
+                        const errorText = await res.text();
+                        console.error("PDF ERROR:", errorText);
+                        alert("PDF FAILED — Check console");
+                        return;
+                      }
+
                       const blob = await res.blob();
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = url;
-                      a.download = "resume.tex";
+                      a.download = "resume.pdf";
                       a.click();
                       URL.revokeObjectURL(url);
-                    }}
-                    className="px-4 py-2 bg-gray-800 text-white rounded"
-                  >
-                    Download LaTeX (.tex)
-                  </button>
-
-                  <button
-                    onClick={async () => {
-                      try {
-                        const res = await fetch("/api/export/pdf", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify(mergedResume),
-                        });
-
-                        const contentType = res.headers.get("content-type") ?? "";
-
-                        if (!contentType.includes("pdf")) {
-                          const errorText = await res.text();
-                          console.error("PDF ERROR:", errorText);
-                          alert("PDF FAILED — Check console");
-                          return;
-                        }
-
-                        const blob = await res.blob();
-
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = "resume.pdf";
-              a.click();
-              URL.revokeObjectURL(url);
-            } catch (err) {
-              console.error(err);
-              alert("Something went wrong generating PDF");
-            }
-          }}
-          className="px-4 py-2 bg-blue-600 text-white rounded"
-        >
-          Download PDF
-        </button>
+                    } catch (err) {
+                      console.error(err);
+                      alert("Something went wrong generating PDF");
+                    }
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded"
+                >
+                  Download PDF
+                </button>
 
 
                 </div>

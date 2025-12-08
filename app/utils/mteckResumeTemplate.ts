@@ -1,8 +1,6 @@
-
 export function buildMTeckResume(resume: any) {
-  function esc(s: string) {
-    if (!s) return "";
-    return s
+  const esc = (s: string = "") =>
+    s
       .replace(/\\/g, "\\textbackslash{}")
       .replace(/%/g, "\\%")
       .replace(/&/g, "\\&")
@@ -13,118 +11,117 @@ export function buildMTeckResume(resume: any) {
       .replace(/}/g, "\\}")
       .replace(/\^/g, "\\^{}")
       .replace(/~/g, "\\~{}");
-  }
 
-  // -------- BULLET SQUEEZE FUNCTION --------
-  function limitBullets(arr: string[], max = 3) {
-    if (!arr) return [];
-    if (arr.length <= max) return arr;
-    return arr.slice(0, max); // truncate extra bullets
-  }
+  const limit = (arr: string[] = [], n: number) => arr.slice(0, n);
 
-  const tex = `
-\\documentclass[letterpaper,10pt]{article}
-\\usepackage[empty]{fullpage}
-\\usepackage{titlesec}
+  // PROJECTS
+ const projects = (resume.projects || [])
+    .map((p: any) => {
+      const bullets = limit(p.bullets, 2)
+        .map((b: string) => `  \\item ${esc(b)}`)
+        .join("\n");
+
+      return `
+\\par\\vspace{2pt}
+\\noindent\\hspace{8pt}\\textbf{${esc(p.name)}\\textnormal{ (${esc(p.link || "")})}} \\hfill \\textbf{${esc(p.date || "")}}
+\\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=12pt]
+${bullets}
+\\end{itemize}
+`;
+    })
+    .join("\n");
+
+  // EXPERIENCE
+  const experience = (resume.experience || [])
+    .map((e: any) => {
+      const bullets = limit(e.bullets, 3)
+        .map((b: string) => `  \\item ${esc(b)}`)
+        .join("\n");
+
+      return `
+\\hspace{8pt}\\textbf{${esc(e.role)}} — ${esc(e.company)} \\hfill \\textbf{${esc(e.dates)}} 
+\\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=12pt]
+${bullets}
+\\end{itemize}
+`;
+    })
+    .join("\n");
+
+  const skills = `
+\\hspace{8pt}\\textbf{Languages:} ${esc(resume.skills.languages.join(", "))} \\\\
+\\hspace*{8pt}\\textbf{Frameworks:} ${esc(resume.skills.frameworks_libraries.join(", "))} \\\\
+\\hspace*{8pt}\\textbf{Tools:} ${esc(resume.skills.tools.join(", "))}
+`;
+
+  const ed = resume.education?.[0] || {};
+
+  return `
+\\documentclass[10pt,letterpaper]{article}
+
+% ----------- PACKAGES -----------
+\\usepackage{fontspec}
+\\usepackage{fontawesome5}
+\\usepackage[margin=0.4in]{geometry}
 \\usepackage{enumitem}
 \\usepackage[hidelinks]{hyperref}
-\\usepackage{fancyhdr}
-\\usepackage{fontawesome5}
-\\usepackage{multicol}
-\\usepackage{bookmark}
-\\usepackage{lastpage}
-\\usepackage{xcolor}
-\\definecolor{accentTitle}{HTML}{0e6e55}
-\\definecolor{accentText}{HTML}{0e6e55}
-\\definecolor{accentLine}{HTML}{a16f0b}
-\\usepackage{lmodern}
-\\renewcommand{\\familydefault}{\\sfdefault}
+\\usepackage{titlesec}
 
+% Sans-serif font (clean + ATS-friendly)
+\\setmainfont{Helvetica}
 
+% Tight spacing
+\\setlength{\\parskip}{2pt}
+\\setlength{\\parsep}{0pt}
+\\setlist[itemize]{itemsep=1pt,topsep=1pt,leftmargin=12pt}
 
-\\pagestyle{fancy}
-\\fancyhf{}
-\\urlstyle{same}
+% Section style
+\\titleformat{\\section}{\\large\\bfseries}{}{0pt}{}
+\\titlespacing*{\\section}{0pt}{4pt}{2pt}
 
-% Tight layout
-\\addtolength{\\oddsidemargin}{-0.7in}
-\\addtolength{\\evensidemargin}{-0.7in}
-\\addtolength{\\textwidth}{1.2in}
-\\addtolength{\\topmargin}{-0.7in}
-\\addtolength{\\textheight}{1.35in}
-
-% Section formatting
-\\titleformat{\\section}{
-  \\vspace{-4pt}
-  \\color{accentText}
-  \\large\\bfseries
-}{}{0em}{}[\\color{accentLine}\\titlerule]
-
+% ----------- BEGIN DOC ----------
 \\begin{document}
 
-% HEADER
-\\begin{center}
-  {\\Huge\\color{accentTitle} ${esc(resume.name)}}\\\\
-  \\vspace{6pt}
-  {${esc(resume.contact.phone)} • ${esc(resume.contact.email)} • ${esc(resume.contact.linkedin)} • ${esc(resume.contact.github)}}
-  \\vspace{2pt}
-  \\color{accentLine}\\hrule
-\\end{center}
+% -------- HEADER --------
+\\centerline{\\Large \\textbf{${esc(resume.name)}}}
 
-% EXPERIENCE
-\\section*{Experience}
-${resume.experience
-  .map(
-    (exp: any) => `
-\\textbf{${esc(exp.company)}} \\hfill ${esc(exp.dates)} \\\\
-\\textit{${esc(exp.role)}} \\\\
-\\begin{itemize}[itemsep=1pt, leftmargin=15pt]
-${limitBullets(exp.bullets, 3)
-  .map((b) => `  \\item ${esc(b)}`)
-  .join("\n")}
-\\end{itemize}
-`
-  )
-  .join("\n")}
+\\vspace{2pt}
+\\rule{\\textwidth}{0.5pt}
+% ICON CONTACT LINE — single line guaranteed
+\\noindent
+{\\footnotesize % shrink just the contact line
+  \\hbox to \\textwidth{
+    \\raisebox{-0.1\\height}{\\faPhone}~${esc(resume.contact.phone)}
+    \\hspace{0.4em}
+    \\raisebox{-0.1\\height}{\\faEnvelope}~${esc(resume.contact.email)}
+    \\hspace{0.4em}
+    \\raisebox{-0.1\\height}{\\faLinkedin}~\\href{${esc(resume.contact.linkedin)}}{${esc(resume.contact.linkedin)}}
+    \\hspace{0.4em}
+    \\raisebox{-0.1\\height}{\\faGithub}~\\href{${esc(resume.contact.github)}}{${esc(resume.contact.github)}}
+  }
+}
+\\vspace{-20pt}
 
-% PROJECTS
+
+\\rule{\\textwidth}{0.5pt}
+
+% -------- PROJECTS --------
 \\section*{Projects}
-${resume.projects
-  .map(
-    (p: any) => `
-\\textbf{${esc(p.name)}} \\hfill ${esc(p.date)} \\\\
-${p.link ? `\\href{${esc(p.link)}}{${esc(p.link)}}` : ""} \\\\
-\\begin{itemize}[itemsep=1pt, leftmargin=15pt]
-${limitBullets(p.bullets, 3)
-  .map((b) => `  \\item ${esc(b)}`)
-  .join("\n")}
-\\end{itemize}
-`
-  )
-  .join("\n")}
+${projects}
 
-% SKILLS
+% -------- EXPERIENCE --------
+\\section*{Experience}
+${experience}
+
+% -------- SKILLS --------
 \\section*{Skills}
-\\begin{itemize}[leftmargin=15pt]
-   \\item \\textbf{Languages:} ${esc(resume.skills.languages.join(", "))}
-   \\item \\textbf{Frameworks:} ${esc(resume.skills.frameworks_libraries.join(", "))}
-   \\item \\textbf{Tools:} ${esc(resume.skills.tools.join(", "))}
-\\end{itemize}
+${skills}
 
-% EDUCATION
+% -------- EDUCATION --------
 \\section*{Education}
-${resume.education
-  .map(
-    (ed: any) => `
-\\textbf{${esc(ed.institution)}} \\hfill ${esc(ed.graduation_year)} \\\\
-${esc(ed.degree)} — GPA: ${esc(ed.gpa)}
-`
-  )
-  .join("\n")}
+\\hspace{8pt}\\textbf{${esc(ed.degree || "")}} — ${esc(ed.institution || "")} \\hfill ${esc(ed.graduation_year || "")} \\\\
+\\noindent\\hspace*{8pt}GPA: ${esc(ed.gpa || "")}
 
 \\end{document}
 `;
-
-  return tex;
 }
 

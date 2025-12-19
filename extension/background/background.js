@@ -1,35 +1,40 @@
+// background/background.js
 import { mergeResume } from "../utils/mergeResume.js";
+
+const BASE_URL = "http://localhost:3000"; // <-- change this to your domain
 
 console.log("🔥 Background worker loaded.");
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || !msg.action) return;
+
+  // =========================================
+  // MAKE_RESUME
+  // =========================================
   if (msg.action === "MAKE_RESUME") {
     console.log("📩 MAKE_RESUME triggered");
 
     (async () => {
       try {
-        const { tabId } = msg;
+        // Load base resume
+        const url = chrome.runtime.getURL("data/resume.json");
+        const baseResume = await (await fetch(url)).json();
 
-        // Load base resume from extension
-        const resumeURL = chrome.runtime.getURL("data/resume.json");
-        const baseResume = await (await fetch(resumeURL)).json();
-
-        // Call your tailor API
-        const tailor = await fetch("http://localhost:3000/api/tailor", {
+        // Call tailor API
+        const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ jobDescription: msg.jobDescription })
         });
 
-        if (!tailor.ok) throw new Error(await tailor.text());
-        const edits = await tailor.json();
+        if (!tailorRes.ok) throw new Error(await tailorRes.text());
+        const edits = await tailorRes.json();
 
-        // Merge edits + base resume
+        // Merge
         const mergedResume = mergeResume(baseResume, edits);
 
-        // Call the PDF export API
-        const pdfRes = await fetch("http://localhost:3000/api/export/pdf", {
-
+        // Call PDF API
+        const pdfRes = await fetch(`${BASE_URL}/api/export/pdf`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(mergedResume)
@@ -40,9 +45,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const buffer = await pdfRes.arrayBuffer();
         const base64 = arrayBufferToBase64(buffer);
 
-        // Save tailored resume globally
+        // Save in storage
         chrome.storage.local.set({
-          lastTailoredResumePDF: base64,
+          lastTailoredResumeBase64: base64,
           lastTailoredResumeFilename: "Tailored_Resume.pdf",
           lastTailoredResumeTimestamp: Date.now()
         });
@@ -59,10 +64,53 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // =========================================
+  // FORCE_UPLOAD
+  // =========================================
   if (msg.action === "FORCE_UPLOAD") {
-    console.log("📩 FORCE_UPLOAD sent to tab", msg.tabId);
+    console.log("📩 FORCE_UPLOAD → sending to content script");
     chrome.tabs.sendMessage(msg.tabId, { action: "FORCE_UPLOAD" });
     sendResponse({ ok: true });
+    return true;
+  }
+
+  // =========================================
+  // LLM_ANSWER
+  // =========================================
+  if (msg.action === "LLM_ANSWER") {
+    (async () => {
+      try {
+        const r = await fetch(`${BASE_URL}/api/llm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(msg)
+        });
+
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+
+        sendResponse({ answer: data.answer });
+      } catch (err) {
+        sendResponse({ error: String(err) });
+      }
+    })();
+    return true;
+  }
+
+  // =========================================
+  // GET_TAILORED_RESUME
+  // =========================================
+  if (msg.action === "GET_TAILORED_RESUME") {
+    chrome.storage.local.get(
+      ["lastTailoredResumeBase64", "lastTailoredResumeFilename"],
+      (res) => {
+        sendResponse({
+          base64: res.lastTailoredResumeBase64 || null,
+          filename: res.lastTailoredResumeFilename || "Resume.pdf"
+        });
+      }
+    );
+    return true;
   }
 });
 

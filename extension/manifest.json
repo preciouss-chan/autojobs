@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Auto Apply AI",
-  "version": "1.0",
-  "description": "Tailor resumes and manually upload them on application pages.",
+  "version": "2.0.0",
+  "description": "AI-powered resume tailoring and one-click job application automation.",
 
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["https://*/*", "http://*/*"],
@@ -19,9 +19,9 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/content-script.js"],
       "run_at": "document_idle",
-      "all_frames": true
+      "all_frames": true,
+      "js": ["content/content-script.js"]
     }
   ],
 

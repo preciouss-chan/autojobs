@@ -1,0 +1,183 @@
+// content/content-script.js
+console.log("🔥 Content script loaded on:", window.location.href);
+
+// =============================================================================
+// 1) HANDLE DIRECT UPLOAD REQUEST FROM BACKGROUND (immediate tailoring workflow)
+// =============================================================================
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || msg.action !== "UPLOAD_RESUME") return;
+
+  console.log("📩 Received UPLOAD_RESUME from background.");
+
+  (async () => {
+    try {
+      const { resumeBase64, filename } = msg;
+      if (!resumeBase64) throw new Error("No resumeBase64 provided");
+
+      const file = base64ToFile(resumeBase64, filename || "Resume.pdf");
+
+      const success = injectFileIntoPage(file);
+      if (!success) {
+        sendResponse({ error: "No upload input found." });
+        return;
+      }
+
+      sendResponse({ ok: true });
+      console.log("✅ Resume uploaded via direct message.");
+    } catch (err) {
+      console.error("UPLOAD_RESUME failed:", err);
+      sendResponse({ error: String(err) });
+    }
+  })();
+
+  return true; // keeps sendResponse alive for async
+});
+
+
+// =============================================================================
+// 2) AUTO-UPLOAD CACHED RESUME ON ATS PAGES (Workday, Lever, Greenhouse, etc.)
+// =============================================================================
+(async function autoUploadFromCache() {
+  // Give page a moment to render inputs
+  await wait(600);
+
+  // Check if this page has any upload fields
+  if (!pageHasUploadField()) {
+    return; // skip silently
+  }
+
+  console.log("🔍 Upload field detected — checking cached resume...");
+
+  chrome.storage.local.get(
+    ["lastTailoredResumePDF", "lastTailoredResumeFilename", "lastTailoredResumeTimestamp"],
+    (data) => {
+      const base64 = data.lastTailoredResumePDF;
+      if (!base64) {
+        console.log("⚪ No cached resume found.");
+        return;
+      }
+
+      // (Optional) Expire old resumes after 20 minutes
+      const age = Date.now() - (data.lastTailoredResumeTimestamp || 0);
+      if (age > 1000 * 60 * 20) {
+        console.log("⏳ Cached resume expired — ignoring.");
+        return;
+      }
+
+      console.log("💾 Cached tailored resume found — auto-uploading...");
+
+      const file = base64ToFile(
+        base64,
+        data.lastTailoredResumeFilename || "Resume.pdf"
+      );
+
+      injectFileIntoPage(file);
+
+      console.log("🔥 AUTO-UPLOAD complete!");
+    }
+  );
+})();
+
+
+// =============================================================================
+// Helper: Convert base64 → File
+// =============================================================================
+function base64ToFile(base64, filename = "Resume.pdf") {
+  const byteCharacters = atob(base64);
+  const byteNumbers = new Array(byteCharacters.length);
+
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+
+  const byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: "application/pdf" });
+
+  return new File([blob], filename, { type: "application/pdf" });
+}
+
+
+// =============================================================================
+// Helper: Inject File into ANY upload mechanism
+// =============================================================================
+function injectFileIntoPage(file) {
+  // Try common selectors
+  const selectors = [
+    "input[type='file']",
+    "input[type='file'][accept*='pdf']",
+    "input[type='file'][name*='resume']",
+    "input[type='file'][id*='resume']"
+  ];
+
+  let input = null;
+
+  for (const sel of selectors) {
+    input = document.querySelector(sel);
+    if (input) break;
+  }
+
+  // If still nothing, try ANY file input
+  if (!input) {
+    const inputs = [...document.querySelectorAll("input[type=file]")];
+    input = inputs.find((i) => i.offsetParent !== null) || inputs[0] || null;
+  }
+
+  if (input) {
+    console.log("📁 Upload input found:", input);
+
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    console.log("📤 File injected into input successfully.");
+    return true;
+  }
+
+  // Try fancy drag-and-drop uploaders
+  const dropZone = document.querySelector(
+    "[role='button'], .upload, .uploader, .dropzone, .file-uploader"
+  );
+
+  if (dropZone) {
+    console.log("🌀 Drop zone detected:", dropZone);
+
+    const dt = new DataTransfer();
+    dt.items.add(file);
+
+    const evt = new DragEvent("drop", {
+      dataTransfer: dt,
+      bubbles: true,
+      cancelable: true
+    });
+
+    dropZone.dispatchEvent(evt);
+    console.log("📤 File dropped into custom uploader.");
+    return true;
+  }
+
+  console.warn("⚠️ No upload mechanism found on this page.");
+  return false;
+}
+
+
+// =============================================================================
+// Helper: Simple timeout
+// =============================================================================
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+
+// =============================================================================
+// Helper: Detect if page has ANY upload area
+// =============================================================================
+function pageHasUploadField() {
+  return (
+    document.querySelector("input[type='file']") ||
+    document.querySelector("[role='button'], .dropzone, .upload, .uploader, .file-uploader")
+  );
+}
+

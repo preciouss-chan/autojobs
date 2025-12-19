@@ -15,7 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AutoJobs",
   description: "Simplify applying to jobs",
-  logo: "../../../Pictures/100_0088.JPG"
 };
 
 export default function RootLayout({

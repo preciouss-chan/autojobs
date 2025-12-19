@@ -62,7 +62,7 @@ Return JSON exactly in this structure:
 
     const jsonString = response.output_text;
     const parsed = JSON.parse(jsonString);
-
+    console.log(parsed);
     return NextResponse.json(parsed);
 
   } catch (err: any) {

@@ -44,7 +44,10 @@ export default function TailorPage() {
       const response = await fetch("/api/tailor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobDescription: jobText }),
+        body: JSON.stringify({ 
+          jobDescription: jobText,
+          resume: resumeData 
+        }),
       });
 
       const data = await response.json();

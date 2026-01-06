@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Auto Apply AI - Settings</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: #f5f5f5;
+        color: #333;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 8px;
+        padding: 30px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      }
+      h1 {
+        margin-top: 0;
+        color: #2563eb;
+        border-bottom: 2px solid #e5e7eb;
+        padding-bottom: 10px;
+      }
+      .section {
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .section:last-child {
+        border-bottom: none;
+      }
+      .section-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 15px;
+        color: #1f2937;
+      }
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #374151;
+      }
+      input[type="text"],
+      input[type="password"],
+      input[type="url"],
+      textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+        font-family: monospace;
+      }
+      input[type="text"]:focus,
+      input[type="password"]:focus,
+      input[type="url"]:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+      }
+      .help-text {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 5px;
+      }
+      .help-text a {
+        color: #2563eb;
+        text-decoration: none;
+      }
+      .help-text a:hover {
+        text-decoration: underline;
+      }
+      button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .btn-primary {
+        background: #2563eb;
+        color: white;
+      }
+      .btn-primary:hover {
+        background: #1d4ed8;
+      }
+      .btn-secondary {
+        background: #6b7280;
+        color: white;
+        margin-left: 10px;
+      }
+      .btn-secondary:hover {
+        background: #4b5563;
+      }
+      .btn-danger {
+        background: #dc2626;
+        color: white;
+      }
+      .btn-danger:hover {
+        background: #b91c1c;
+      }
+      .btn-success {
+        background: #10b981;
+        color: white;
+      }
+      .btn-success:hover {
+        background: #059669;
+      }
+      .status {
+        margin-top: 15px;
+        padding: 10px;
+        border-radius: 6px;
+        font-size: 14px;
+        display: none;
+      }
+      .status.success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #10b981;
+      }
+      .status.error {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #dc2626;
+      }
+      .checkbox-group {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .checkbox-group input[type="checkbox"] {
+        width: auto;
+        margin-right: 8px;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+      }
+      .danger-zone {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 6px;
+        padding: 15px;
+        margin-top: 20px;
+      }
+      .danger-zone .section-title {
+        color: #dc2626;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Auto Apply AI Settings</h1>
+
+      <!-- API Configuration -->
+      <div class="section">
+        <div class="section-title">API Configuration</div>
+        
+        <label for="openaiKey">OpenAI API Key:</label>
+        <input type="password" id="openaiKey" placeholder="sk-..." />
+        <div class="help-text">
+          Your API key is stored locally and never sent to our servers. 
+          <a href="https://platform.openai.com/api-keys" target="_blank">Get your API key here</a>
+        </div>
+      </div>
+
+      <!-- Preferences -->
+      <div class="section">
+        <div class="section-title">Preferences</div>
+        
+        <div class="checkbox-group">
+          <input type="checkbox" id="showNotifications" />
+          <label for="showNotifications" style="margin: 0;">Show browser notifications</label>
+        </div>
+
+        <div class="checkbox-group">
+          <input type="checkbox" id="confirmBeforeUpload" />
+          <label for="confirmBeforeUpload" style="margin: 0;">Confirm before uploading files</label>
+        </div>
+      </div>
+
+      <!-- Data Management -->
+      <div class="section">
+        <div class="section-title">Data Management</div>
+        
+        <button class="btn-secondary" id="exportSettings">Export Settings</button>
+        <button class="btn-secondary" id="importSettings">Import Settings</button>
+        <div class="help-text" style="margin-top: 10px;">
+          Export/import your settings (API key, preferences) as JSON
+        </div>
+      </div>
+
+      <!-- Danger Zone -->
+      <div class="danger-zone">
+        <div class="section-title">Danger Zone</div>
+        <p style="margin-bottom: 15px; color: #6b7280;">
+          These actions cannot be undone. Be careful!
+        </p>
+        <button class="btn-danger" id="clearCache">Clear All Cached Data</button>
+        <div class="help-text" style="margin-top: 10px;">
+          This will delete all cached resumes, cover letters, and uploaded resume data.
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="actions">
+        <button class="btn-primary" id="saveSettings">Save Settings</button>
+        <button class="btn-secondary" id="resetSettings">Reset to Defaults</button>
+      </div>
+
+      <div id="status" class="status"></div>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>
+

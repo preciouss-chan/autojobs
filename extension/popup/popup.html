@@ -3,34 +3,295 @@
   <head>
     <title>Auto Apply AI</title>
     <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      
       body {
         margin: 0;
-        padding: 16px;
-        font-family: sans-serif;
-        width: 300px;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        width: 380px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #1f2937;
       }
-      h2 { margin-top: 0; }
+      
+      .header {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 20px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .header h2 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      
+      .settings-btn {
+        background: transparent;
+        border: 1.5px solid #667eea;
+        color: #667eea;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-weight: 500;
+      }
+      
+      .settings-btn:hover {
+        background: #667eea;
+        color: white;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+      }
+      
+      .content {
+        background: white;
+        padding: 20px;
+      }
+      
+      .card {
+        background: white;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        border: 1px solid #f3f4f6;
+        transition: all 0.2s;
+      }
+      
+      .card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        transform: translateY(-1px);
+      }
+      
+      .card-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      
+      .card-title::before {
+        content: '';
+        width: 3px;
+        height: 16px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 2px;
+      }
+      
       button {
         width: 100%;
-        padding: 10px;
-        margin-top: 10px;
-        border-radius: 6px;
+        padding: 12px 16px;
+        margin-top: 8px;
+        border-radius: 8px;
         border: none;
         cursor: pointer;
         font-size: 14px;
+        font-weight: 600;
+        transition: all 0.2s;
+        position: relative;
+        overflow: hidden;
       }
-      #generate { background: #2563eb; color: white; }
-      #uploadResume { background: #10b981; color: white; }
+      
+      button:first-of-type {
+        margin-top: 0;
+      }
+      
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      
+      button:not(:disabled):hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+      
+      button:not(:disabled):active {
+        transform: translateY(0);
+      }
+      
+      #generate {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        font-size: 15px;
+        padding: 14px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      }
+      
+      #generate:hover {
+        box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+      }
+      
+      #uploadResume {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+      }
+      
+      #uploadCoverLetter {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+      }
+      
+      #previewResume {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+      }
+      
+      #previewCoverLetter {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+      }
+      
+      .file-input-wrapper {
+        position: relative;
+        margin-bottom: 8px;
+      }
+      
+      input[type="file"] {
+        width: 100%;
+        padding: 10px;
+        border: 2px dashed #d1d5db;
+        border-radius: 8px;
+        font-size: 12px;
+        background: #f9fafb;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      
+      input[type="file"]:hover {
+        border-color: #667eea;
+        background: #f3f4ff;
+      }
+      
+      .file-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      
+      .file-controls label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #374151;
+        margin: 0;
+      }
+      
+      #clearResume {
+        display: none;
+        padding: 6px 12px;
+        font-size: 11px;
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        color: white;
+        border-radius: 6px;
+        width: auto;
+        margin: 0;
+        font-weight: 600;
+      }
+      
+      #clearResume:hover {
+        box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+      }
+      
+      .status {
+        font-size: 12px;
+        margin-top: 10px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        text-align: center;
+        font-weight: 500;
+        display: none;
+      }
+      
+      .status.success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #10b981;
+      }
+      
+      .status.error {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #ef4444;
+      }
+      
+      .button-group {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      
+      .button-group button {
+        margin-top: 0;
+      }
+      
+      .divider {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+        margin: 20px 0;
+      }
     </style>
   </head>
 
   <body>
-    <h2>Auto Apply AI</h2>
+    <div class="header">
+      <h2>Auto Apply AI</h2>
+      <button id="openSettings" class="settings-btn">Settings</button>
+    </div>
 
-    <button id="generate">Generate Tailored Resume</button>
-    <button id="uploadResume">Upload Resume on This Page</button>
+    <div class="content">
+      <button id="generate">Generate Tailored Resume</button>
+
+      <div class="card">
+        <div class="card-title">Upload Resume</div>
+        <div class="file-controls">
+          <label for="resumeFile">PDF Resume</label>
+          <button id="clearResume">Clear</button>
+        </div>
+        <div class="file-input-wrapper">
+          <input type="file" id="resumeFile" accept=".pdf,application/pdf" />
+        </div>
+        <div id="resumeStatus" class="status"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Preview</div>
+        <div class="button-group">
+          <button id="previewResume">Preview Resume</button>
+          <button id="previewCoverLetter">Preview Cover Letter</button>
+        </div>
+        <div id="downloadStatus" class="status"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Upload to Page</div>
+        <div class="button-group">
+          <button id="uploadResume">Upload Resume</button>
+          <button id="uploadCoverLetter">Upload Cover Letter</button>
+        </div>
+      </div>
+    </div>
 
     <script src="popup.js"></script>
   </body>
 </html>
-

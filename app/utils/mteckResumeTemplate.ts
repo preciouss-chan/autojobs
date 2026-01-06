@@ -17,7 +17,7 @@ export function buildMTeckResume(resume: any) {
   // PROJECTS
  const projects = (resume.projects || [])
     .map((p: any) => {
-      const bullets = limit(p.bullets, 2)
+      const bullets = limit(p.bullets, 3) // Max 3 bullets per project to fit on one page
         .map((b: string) => `  \\item ${esc(b)}`)
         .join("\n");
 
@@ -34,12 +34,13 @@ ${bullets}
   // EXPERIENCE
   const experience = (resume.experience || [])
     .map((e: any) => {
-      const bullets = limit(e.bullets, 3)
+      const bullets = limit(e.bullets, 5) // Max 5 bullets per experience to fit on one page
         .map((b: string) => `  \\item ${esc(b)}`)
         .join("\n");
 
       return `
-\\hspace{8pt}\\textbf{${esc(e.role)}} — ${esc(e.company)} \\hfill \\textbf{${esc(e.dates)}} 
+\\par\\vspace{2pt}
+\\noindent\\hspace{8pt}\\textbf{${esc(e.role)}} — ${esc(e.company)} \\hfill \\textbf{${esc(e.dates)}} 
 \\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=12pt]
 ${bullets}
 \\end{itemize}
@@ -66,20 +67,29 @@ ${bullets}
 \\usepackage[hidelinks]{hyperref}
 \\usepackage{titlesec}
 
+% ----------- PAGE BREAK PREVENTION -----------
+\\usepackage{afterpage}
+\\raggedbottom
+\\setlength{\\parskip}{0pt}
+\\setlength{\\topskip}{0pt}
+
 % Sans-serif font (clean + ATS-friendly)
 \\setmainfont{Helvetica}
 
-% Tight spacing
-\\setlength{\\parskip}{2pt}
+% Tight spacing to fit on one page
+\\setlength{\\parskip}{1pt}
 \\setlength{\\parsep}{0pt}
-\\setlist[itemize]{itemsep=1pt,topsep=1pt,leftmargin=12pt}
+\\setlist[itemize]{itemsep=0.5pt,topsep=0.5pt,leftmargin=12pt}
+\\setlength{\\baselineskip}{11pt}
 
 % Section style
 \\titleformat{\\section}{\\large\\bfseries}{}{0pt}{}
-\\titlespacing*{\\section}{0pt}{4pt}{2pt}
+\\titlespacing*{\\section}{0pt}{3pt}{1pt} % Tighter spacing
 
 % ----------- BEGIN DOC ----------
 \\begin{document}
+\\enlargethispage{0.1in} % Slightly enlarge page if needed
+\\thispagestyle{empty} % No page number
 
 % -------- HEADER --------
 \\centerline{\\Large \\textbf{${esc(resume.name)}}}

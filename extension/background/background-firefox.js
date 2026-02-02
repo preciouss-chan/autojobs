@@ -37,270 +37,218 @@ function decodeBase64ToUnicode(base64) {
   return new TextDecoder().decode(bytes);
 }
 
-browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+async function handleMakeResume(msg) {
+  try {
+    let baseResume;
+    const stored = await browserAPI.storage.local.get(["uploadedResume"]);
+    
+    if (stored.uploadedResume) {
+      baseResume = stored.uploadedResume;
+    } else {
+      const url = browserAPI.runtime.getURL("data/resume.json");
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to load default resume: ${response.status}`);
+      }
+      baseResume = await response.json();
+    }
+
+    const apiKey = await getOpenAIApiKey();
+    
+    if (!apiKey) {
+      throw new Error("OpenAI API key not set. Please configure it in the extension settings.");
+    }
+
+    const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "X-OpenAI-API-Key": apiKey
+      },
+      body: JSON.stringify({ 
+        jobDescription: msg.jobDescription,
+        resume: baseResume
+      })
+    });
+
+    if (!tailorRes.ok) {
+      const errorText = await tailorRes.text();
+      if (errorText.includes('<html>') || errorText.includes('403')) {
+        throw new Error(`Backend returned ${tailorRes.status}. Check that BASE_URL is correct.`);
+      }
+      try {
+        const errorJson = JSON.parse(errorText);
+        throw new Error(errorJson.error || errorJson.details || "Backend error");
+      } catch {
+        throw new Error(errorText.substring(0, 300) || `Backend returned ${tailorRes.status}`);
+      }
+    }
+    
+    const edits = await tailorRes.json();
+
+    if (edits.cover_letter && edits.cover_letter.trim() !== "") {
+      const coverLetterBase64 = encodeUnicodeToBase64(edits.cover_letter);
+      await browserAPI.storage.local.set({
+        lastCoverLetterBase64: coverLetterBase64,
+        lastCoverLetterFilename: "cover_letter.txt"
+      });
+    } else {
+      await browserAPI.storage.local.remove(["lastCoverLetterBase64", "lastCoverLetterFilename"]);
+    }
+
+    const mergedResume = mergeResume(baseResume, edits);
+
+    const pdfRes = await fetch(`${BASE_URL}/api/export/pdf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(mergedResume)
+    });
+
+    if (!pdfRes.ok) {
+      const pdfError = await pdfRes.text();
+      throw new Error(`PDF generation failed: ${pdfError.substring(0, 200)}`);
+    }
+
+    const buffer = await pdfRes.arrayBuffer();
+    const base64 = arrayBufferToBase64(buffer);
+
+    await browserAPI.storage.local.set({
+      lastTailoredResumeBase64: base64,
+      lastTailoredResumeFilename: "Tailored_Resume.pdf",
+      lastTailoredResumeTimestamp: Date.now()
+    });
+
+    return { ok: true };
+  } catch (err) {
+    console.error("MAKE_RESUME Error:", err);
+    return { error: String(err) };
+  }
+}
+
+async function sendMessageWithRetry(tabId, message, retries = 3, delay = 200) {
+  try {
+    const resp = await browserAPI.tabs.sendMessage(tabId, message);
+    return resp || { ok: true };
+  } catch (error) {
+    if (retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return sendMessageWithRetry(tabId, message, retries - 1, delay);
+    }
+    try {
+      await browserAPI.scripting.executeScript({
+        target: { tabId },
+        files: ["content/content-script.js"]
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+      const finalResp = await browserAPI.tabs.sendMessage(tabId, message);
+      return finalResp || { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message || String(err) };
+    }
+  }
+}
+
+async function handleConvertCoverLetterToPdf(msg) {
+  try {
+    const { text } = msg;
+    if (!text) {
+      return { ok: false, error: "No text provided" };
+    }
+
+    const response = await fetch(`${BASE_URL}/api/export/cover-letter`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`Backend returned ${response.status}: ${errorText}`);
+    }
+
+    const pdfBlob = await response.blob();
+    const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+    
+    const bytes = new Uint8Array(pdfArrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const pdfBase64 = btoa(binary);
+
+    return { ok: true, base64: pdfBase64 };
+  } catch (err) {
+    console.error("Cover letter conversion error:", err);
+    return { ok: false, error: err.message };
+  }
+}
+
+async function handleUploadResume(msg) {
+  try {
+    const { resumeData, filename } = msg;
+    
+    await browserAPI.storage.local.set({
+      uploadedResume: resumeData,
+      uploadedResumeFilename: filename || "resume.json"
+    });
+
+    return { ok: true };
+  } catch (err) {
+    console.error("UPLOAD_RESUME Error:", err);
+    return { error: String(err) };
+  }
+}
+
+async function handleGetTailoredResume() {
+  const res = await browserAPI.storage.local.get(
+    ["lastTailoredResumeBase64", "lastTailoredResumeFilename"]
+  );
+  return {
+    base64: res.lastTailoredResumeBase64 || null,
+    filename: res.lastTailoredResumeFilename || "Resume.pdf"
+  };
+}
+
+async function handleGetCoverLetter() {
+  const res = await browserAPI.storage.local.get(
+    ["lastCoverLetterBase64", "lastCoverLetterFilename"]
+  );
+  return {
+    base64: res.lastCoverLetterBase64 || null,
+    filename: res.lastCoverLetterFilename || "cover_letter.txt"
+  };
+}
+
+browserAPI.runtime.onMessage.addListener((msg) => {
   if (!msg || !msg.action) return;
 
-  // =========================================
-  // MAKE_RESUME
-  // =========================================
+  // Firefox expects a Promise for async responses.
   if (msg.action === "MAKE_RESUME") {
-    (async () => {
-      try {
-        let baseResume;
-        const stored = await browserAPI.storage.local.get(["uploadedResume"]);
-        
-        if (stored.uploadedResume) {
-          baseResume = stored.uploadedResume;
-        } else {
-          const url = browserAPI.runtime.getURL("data/resume.json");
-          const response = await fetch(url);
-          if (!response.ok) {
-            throw new Error(`Failed to load default resume: ${response.status}`);
-          }
-          baseResume = await response.json();
-        }
-
-        const apiKey = await getOpenAIApiKey();
-        
-        if (!apiKey) {
-          throw new Error("OpenAI API key not set. Please configure it in the extension settings.");
-        }
-
-        const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "X-OpenAI-API-Key": apiKey
-          },
-          body: JSON.stringify({ 
-            jobDescription: msg.jobDescription,
-            resume: baseResume
-          })
-        });
-
-        if (!tailorRes.ok) {
-          const errorText = await tailorRes.text();
-          if (errorText.includes('<html>') || errorText.includes('403')) {
-            throw new Error(`Backend returned ${tailorRes.status}. Check that BASE_URL is correct.`);
-          }
-          try {
-            const errorJson = JSON.parse(errorText);
-            throw new Error(errorJson.error || errorJson.details || "Backend error");
-          } catch {
-            throw new Error(errorText.substring(0, 300) || `Backend returned ${tailorRes.status}`);
-          }
-        }
-        
-        const edits = await tailorRes.json();
-
-        if (edits.cover_letter && edits.cover_letter.trim() !== "") {
-          const coverLetterBase64 = encodeUnicodeToBase64(edits.cover_letter);
-          await browserAPI.storage.local.set({
-            lastCoverLetterBase64: coverLetterBase64,
-            lastCoverLetterFilename: "cover_letter.txt"
-          });
-        } else {
-          await browserAPI.storage.local.remove(["lastCoverLetterBase64", "lastCoverLetterFilename"]);
-        }
-
-        const mergedResume = mergeResume(baseResume, edits);
-
-        const pdfRes = await fetch(`${BASE_URL}/api/export/pdf`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(mergedResume)
-        });
-
-        if (!pdfRes.ok) {
-          const pdfError = await pdfRes.text();
-          throw new Error(`PDF generation failed: ${pdfError.substring(0, 200)}`);
-        }
-
-        const buffer = await pdfRes.arrayBuffer();
-        const base64 = arrayBufferToBase64(buffer);
-
-        await browserAPI.storage.local.set({
-          lastTailoredResumeBase64: base64,
-          lastTailoredResumeFilename: "Tailored_Resume.pdf",
-          lastTailoredResumeTimestamp: Date.now()
-        });
-
-        sendResponse({ ok: true });
-      } catch (err) {
-        console.error("MAKE_RESUME Error:", err);
-        sendResponse({ error: String(err) });
-      }
-    })();
-
-    return true;
+    return handleMakeResume(msg);
   }
 
-  // =========================================
-  // FORCE_UPLOAD
-  // =========================================
   if (msg.action === "FORCE_UPLOAD") {
-    const sendWithRetry = async (retries = 3, delay = 200) => {
-      try {
-        const resp = await browserAPI.tabs.sendMessage(msg.tabId, { action: "FORCE_UPLOAD" });
-        sendResponse(resp || { ok: true });
-      } catch (error) {
-        if (retries > 0) {
-          setTimeout(() => sendWithRetry(retries - 1, delay), delay);
-        } else {
-          try {
-            await browserAPI.scripting.executeScript({
-              target: { tabId: msg.tabId },
-              files: ["content/content-script.js"]
-            });
-            setTimeout(async () => {
-              try {
-                const finalResp = await browserAPI.tabs.sendMessage(msg.tabId, { action: "FORCE_UPLOAD" });
-                sendResponse(finalResp || { ok: true });
-              } catch (err) {
-                sendResponse({ ok: false, error: err.message });
-              }
-            }, 200);
-          } catch (err) {
-            sendResponse({ ok: false, error: `Content script not available: ${error}` });
-          }
-        }
-      }
-    };
-    
-    sendWithRetry();
-    return true;
+    return sendMessageWithRetry(msg.tabId, { action: "FORCE_UPLOAD" });
   }
 
-  // =========================================
-  // CONVERT_COVER_LETTER_TO_PDF
-  // =========================================
   if (msg.action === "CONVERT_COVER_LETTER_TO_PDF") {
-    (async () => {
-      try {
-        const { text } = msg;
-        if (!text) {
-          sendResponse({ ok: false, error: "No text provided" });
-          return;
-        }
-
-        const response = await fetch(`${BASE_URL}/api/export/cover-letter`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text })
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          throw new Error(`Backend returned ${response.status}: ${errorText}`);
-        }
-
-        const pdfBlob = await response.blob();
-        const pdfArrayBuffer = await pdfBlob.arrayBuffer();
-        
-        const bytes = new Uint8Array(pdfArrayBuffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const pdfBase64 = btoa(binary);
-
-        sendResponse({ ok: true, base64: pdfBase64 });
-      } catch (err) {
-        console.error("Cover letter conversion error:", err);
-        sendResponse({ ok: false, error: err.message });
-      }
-    })();
-    return true;
+    return handleConvertCoverLetterToPdf(msg);
   }
 
-  // =========================================
-  // FORCE_UPLOAD_COVER
-  // =========================================
   if (msg.action === "FORCE_UPLOAD_COVER") {
-    const sendWithRetry = async (retries = 3, delay = 200) => {
-      try {
-        const resp = await browserAPI.tabs.sendMessage(msg.tabId, { action: "FORCE_UPLOAD_COVER" });
-        sendResponse(resp || { ok: true });
-      } catch (error) {
-        if (retries > 0) {
-          setTimeout(() => sendWithRetry(retries - 1, delay), delay);
-        } else {
-          try {
-            await browserAPI.scripting.executeScript({
-              target: { tabId: msg.tabId },
-              files: ["content/content-script.js"]
-            });
-            setTimeout(async () => {
-              try {
-                const finalResp = await browserAPI.tabs.sendMessage(msg.tabId, { action: "FORCE_UPLOAD_COVER" });
-                sendResponse(finalResp || { ok: true });
-              } catch (err) {
-                sendResponse({ ok: false, error: err.message });
-              }
-            }, 200);
-          } catch (err) {
-            sendResponse({ ok: false, error: `Content script not available: ${error}` });
-          }
-        }
-      }
-    };
-    
-    sendWithRetry();
-    return true;
+    return sendMessageWithRetry(msg.tabId, { action: "FORCE_UPLOAD_COVER" });
   }
 
-  // =========================================
-  // GET_TAILORED_RESUME
-  // =========================================
   if (msg.action === "GET_TAILORED_RESUME") {
-    (async () => {
-      const res = await browserAPI.storage.local.get(
-        ["lastTailoredResumeBase64", "lastTailoredResumeFilename"]
-      );
-      sendResponse({
-        base64: res.lastTailoredResumeBase64 || null,
-        filename: res.lastTailoredResumeFilename || "Resume.pdf"
-      });
-    })();
-    return true;
+    return handleGetTailoredResume();
   }
 
-  // =========================================
-  // GET_COVER_LETTER
-  // =========================================
   if (msg.action === "GET_COVER_LETTER") {
-    (async () => {
-      const res = await browserAPI.storage.local.get(
-        ["lastCoverLetterBase64", "lastCoverLetterFilename"]
-      );
-      sendResponse({
-        base64: res.lastCoverLetterBase64 || null,
-        filename: res.lastCoverLetterFilename || "cover_letter.txt"
-      });
-    })();
-    return true;
+    return handleGetCoverLetter();
   }
 
-  // =========================================
-  // UPLOAD_RESUME
-  // =========================================
   if (msg.action === "UPLOAD_RESUME") {
-    (async () => {
-      try {
-        const { resumeData, filename } = msg;
-        
-        await browserAPI.storage.local.set({
-          uploadedResume: resumeData,
-          uploadedResumeFilename: filename || "resume.json"
-        });
-
-        sendResponse({ ok: true });
-      } catch (err) {
-        console.error("UPLOAD_RESUME Error:", err);
-        sendResponse({ error: String(err) });
-      }
-    })();
-    return true;
+    return handleUploadResume(msg);
   }
 });
 

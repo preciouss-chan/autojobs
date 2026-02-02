@@ -4,6 +4,9 @@
 (function() {
   console.log("🎨 Ashby inject script loaded");
 
+  // Detect Firefox (using userAgent since InstallTrigger is deprecated)
+  const isFirefox = navigator.userAgent.includes('Firefox');
+
   window.addEventListener('AUTOJOBS_ASHBY_UPLOAD', async (event) => {
     const { fileData, fileName, fileType, mimeType } = event.detail;
     console.log("🎨 Ashby upload event received:", fileName, fileType);
@@ -63,12 +66,25 @@
       const dt = new DataTransfer();
       dt.items.add(file);
       
-      // Override the files property
-      Object.defineProperty(targetInput, 'files', {
-        value: dt.files,
-        writable: false,
-        configurable: true
-      });
+      // Override the files property - Firefox requires special handling
+      if (isFirefox) {
+        try {
+          const nativeInputFileSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files')?.set;
+          if (nativeInputFileSetter) {
+            nativeInputFileSetter.call(targetInput, dt.files);
+          } else {
+            targetInput.files = dt.files;
+          }
+        } catch (e) {
+          targetInput.files = dt.files;
+        }
+      } else {
+        Object.defineProperty(targetInput, 'files', {
+          value: dt.files,
+          writable: false,
+          configurable: true
+        });
+      }
 
       // Method 1: Try to find React fiber and call onChange
       let reactHandlerCalled = false;

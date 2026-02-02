@@ -1,5 +1,29 @@
 // content/content-script.js
 
+const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
+const isFirefox = typeof browser !== 'undefined' && browser.runtime && browser.runtime.getBrowserInfo;
+
+function sendRuntimeMessage(message) {
+  try {
+    const result = browserAPI.runtime.sendMessage(message);
+    if (result && typeof result.then === "function") {
+      return result;
+    }
+  } catch (err) {
+    return Promise.reject(err);
+  }
+  return new Promise((resolve) => {
+    browserAPI.runtime.sendMessage(message, (resp) => {
+      const lastError = browserAPI.runtime.lastError;
+      if (lastError) {
+        resolve({ error: lastError.message });
+        return;
+      }
+      resolve(resp);
+    });
+  });
+}
+
 // Inject Greenhouse page-context script for React handling
 let greenhouseScriptInjected = false;
 
@@ -44,6 +68,21 @@ function injectAshbyScript() {
   });
 }
 
+// Helper to dispatch CustomEvent that works in both Chrome and Firefox
+// Firefox's Xray vision blocks page scripts from accessing content script objects
+function dispatchPageEvent(eventName, detail) {
+  // For Firefox: use cloneInto to make the detail accessible to page scripts
+  // For Chrome: just use the detail directly
+  if (typeof cloneInto === 'function') {
+    // Firefox - clone the detail object into the page's scope
+    const clonedDetail = cloneInto(detail, window);
+    window.dispatchEvent(new CustomEvent(eventName, { detail: clonedDetail }));
+  } else {
+    // Chrome - normal dispatch
+    window.dispatchEvent(new CustomEvent(eventName, { detail }));
+  }
+}
+
 // Use page context injection for Ashby file uploads
 async function uploadViaAshbyContext(file, fileType) {
   await injectAshbyScript();
@@ -56,7 +95,9 @@ async function uploadViaAshbyContext(file, fileType) {
       
       const handleResult = (e) => {
         window.removeEventListener('AUTOJOBS_ASHBY_RESULT', handleResult);
-        resolve(e.detail.success);
+        // Access detail safely - Firefox wraps it
+        const success = e.detail?.success ?? (typeof e.detail === 'object' ? e.detail.wrappedJSObject?.success : false);
+        resolve(success);
       };
       window.addEventListener('AUTOJOBS_ASHBY_RESULT', handleResult);
       
@@ -65,9 +106,12 @@ async function uploadViaAshbyContext(file, fileType) {
         resolve(true);
       }, 3000);
       
-      window.dispatchEvent(new CustomEvent('AUTOJOBS_ASHBY_UPLOAD', {
-        detail: { fileData: base64, fileName: file.name, fileType, mimeType: file.type }
-      }));
+      dispatchPageEvent('AUTOJOBS_ASHBY_UPLOAD', { 
+        fileData: base64, 
+        fileName: file.name, 
+        fileType, 
+        mimeType: file.type 
+      });
     };
     reader.onerror = () => resolve(false);
     reader.readAsDataURL(file);
@@ -86,7 +130,9 @@ async function uploadViaPageContext(file, fileType, inputId) {
       
       const handleResult = (e) => {
         window.removeEventListener('AUTOJOBS_UPLOAD_RESULT', handleResult);
-        resolve(e.detail.success);
+        // Access detail safely - Firefox wraps it
+        const success = e.detail?.success ?? (typeof e.detail === 'object' ? e.detail.wrappedJSObject?.success : false);
+        resolve(success);
       };
       window.addEventListener('AUTOJOBS_UPLOAD_RESULT', handleResult);
       
@@ -95,9 +141,13 @@ async function uploadViaPageContext(file, fileType, inputId) {
         resolve(true);
       }, 3000);
       
-      window.dispatchEvent(new CustomEvent('AUTOJOBS_UPLOAD_FILE', {
-        detail: { fileData: base64, fileName: file.name, fileType, mimeType: file.type, inputId }
-      }));
+      dispatchPageEvent('AUTOJOBS_UPLOAD_FILE', { 
+        fileData: base64, 
+        fileName: file.name, 
+        fileType, 
+        mimeType: file.type, 
+        inputId 
+      });
     };
     reader.onerror = () => resolve(false);
     reader.readAsDataURL(file);
@@ -930,18 +980,37 @@ async function injectFileIntoInput(input, file, fileType) {
   const dt = new DataTransfer();
   dt.items.add(file);
 
-  try {
-    Object.defineProperty(input, 'files', {
-      value: dt.files,
-      writable: false,
-      configurable: true,
-      enumerable: true
-    });
-  } catch (e) {
+  // Firefox requires special handling for file inputs
+  if (isFirefox) {
     try {
-  input.files = dt.files;
-    } catch (e2) {
-      return false;
+      // Try to use the native setter via prototype (more reliable in Firefox)
+      const nativeInputFileSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files')?.set;
+      if (nativeInputFileSetter) {
+        nativeInputFileSetter.call(input, dt.files);
+      } else {
+        input.files = dt.files;
+      }
+    } catch (e) {
+      try {
+        input.files = dt.files;
+      } catch (e2) {
+        return false;
+      }
+    }
+  } else {
+    try {
+      Object.defineProperty(input, 'files', {
+        value: dt.files,
+        writable: false,
+        configurable: true,
+        enumerable: true
+      });
+    } catch (e) {
+      try {
+        input.files = dt.files;
+      } catch (e2) {
+        return false;
+      }
     }
   }
   
@@ -952,6 +1021,23 @@ async function injectFileIntoInput(input, file, fileType) {
   // Dispatch change and input events
   input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
   input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+  
+  // Firefox: Additional event dispatching for better React compatibility
+  if (isFirefox) {
+    try {
+      // Force React to recognize the change by resetting the value tracker
+      const tracker = input._valueTracker;
+      if (tracker) {
+        tracker.setValue('');
+      }
+      
+      // Dispatch with a slight delay for Firefox's event loop
+      setTimeout(() => {
+        input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      }, 10);
+    } catch (e) {}
+  }
   
   if (form) {
     form.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
@@ -1524,55 +1610,53 @@ async function injectFileIntoInput(input, file, fileType) {
 
 // Floating UI removed - all functionality moved to extension popup
 
-function getTailoredResume() {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action: "GET_TAILORED_RESUME" }, (resp) => {
-      if (!resp || !resp.base64) return resolve(null);
-      resolve(resp);
-    });
-  });
+async function getTailoredResume() {
+  const resp = await sendRuntimeMessage({ action: "GET_TAILORED_RESUME" });
+  if (!resp || !resp.base64) return null;
+  return resp;
 }
 
-function getCoverLetter() {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action: "GET_COVER_LETTER" }, (resp) => {
-      if (!resp || !resp.base64) return resolve(null);
-      resolve(resp);
-    });
-  });
+async function getCoverLetter() {
+  const resp = await sendRuntimeMessage({ action: "GET_COVER_LETTER" });
+  if (!resp || !resp.base64) return null;
+  return resp;
 }
 
 // ---------- Handle Messages from Background ----------
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.action) return;
 
   // Manual resume upload from popup
   if (msg.action === "FORCE_UPLOAD") {
-    (async () => {
+    const handler = async () => {
       try {
-      const cached = await getTailoredResume();
-      if (!cached) {
-        sendResponse({ ok: false, error: "No resume saved" });
-        return;
-      }
-      const file = base64ToFile(cached.base64, cached.filename);
+        const cached = await getTailoredResume();
+        if (!cached) {
+          return { ok: false, error: "No resume saved" };
+        }
+        const file = base64ToFile(cached.base64, cached.filename);
         const ok = await injectFileIntoPage(file, "resume");
-      sendResponse({ ok });
+        return { ok };
       } catch (err) {
         console.error("Resume upload error:", err);
-        sendResponse({ ok: false, error: err.message });
+        return { ok: false, error: err.message };
       }
-    })();
+    };
+
+    if (isFirefox) {
+      return handler();
+    }
+
+    handler().then(sendResponse);
     return true;
   }
 
   // Manual cover letter upload from popup
   if (msg.action === "FORCE_UPLOAD_COVER") {
-    (async () => {
+    const handler = async () => {
       const cached = await getCoverLetter();
       if (!cached) {
-        sendResponse({ ok: false, error: "No cover letter saved" });
-        return;
+        return { ok: false, error: "No cover letter saved" };
       }
 
       try {
@@ -1585,11 +1669,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const coverLetterText = new TextDecoder().decode(bytes);
         
         // Convert text to PDF via background script (has better permissions for localhost)
-        const convertResponse = await new Promise((resolve) => {
-          chrome.runtime.sendMessage(
-            { action: "CONVERT_COVER_LETTER_TO_PDF", text: coverLetterText },
-            resolve
-          );
+        const convertResponse = await sendRuntimeMessage({
+          action: "CONVERT_COVER_LETTER_TO_PDF",
+          text: coverLetterText
         });
 
         if (!convertResponse || !convertResponse.ok) {
@@ -1599,12 +1681,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Create PDF file from base64
         const file = base64ToFile(convertResponse.base64, "cover_letter.pdf", "application/pdf");
         const ok = await injectFileIntoPage(file, "cover");
-      sendResponse({ ok });
+        return { ok };
       } catch (err) {
         console.error("Cover letter upload error:", err);
-        sendResponse({ ok: false, error: err.message });
+        return { ok: false, error: err.message };
       }
-    })();
+    };
+
+    if (isFirefox) {
+      return handler();
+    }
+
+    handler().then(sendResponse);
     return true;
   }
 });

@@ -2,6 +2,9 @@
 (function() {
   'use strict';
   
+  // Detect Firefox (using userAgent since InstallTrigger is deprecated)
+  const isFirefox = navigator.userAgent.includes('Firefox');
+  
   window.addEventListener('AUTOJOBS_UPLOAD_FILE', async function(e) {
     const { fileData, fileName, fileType, mimeType, inputId } = e.detail;
     
@@ -40,7 +43,23 @@
       // Set the file using DataTransfer
       const dt = new DataTransfer();
       dt.items.add(file);
-      input.files = dt.files;
+      
+      // Firefox requires special handling for file inputs
+      if (isFirefox) {
+        // Try to use the native setter via prototype
+        try {
+          const nativeInputFileSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files')?.set;
+          if (nativeInputFileSetter) {
+            nativeInputFileSetter.call(input, dt.files);
+          } else {
+            input.files = dt.files;
+          }
+        } catch (e) {
+          input.files = dt.files;
+        }
+      } else {
+        input.files = dt.files;
+      }
       
       // Find and call React's onChange handler
       let onChangeCalled = false;
@@ -49,6 +68,11 @@
         key.startsWith('__reactInternalInstance$') ||
         key.startsWith('__reactProps$')
       );
+      
+      // Create a more complete native event for Firefox
+      const nativeEvent = new Event('change', { bubbles: true, cancelable: true });
+      Object.defineProperty(nativeEvent, 'target', { value: input, writable: false });
+      Object.defineProperty(nativeEvent, 'currentTarget', { value: input, writable: false });
       
       const syntheticEvent = {
         target: input,
@@ -59,11 +83,14 @@
         defaultPrevented: false,
         eventPhase: 2,
         isTrusted: true,
-        nativeEvent: new Event('change', { bubbles: true }),
+        nativeEvent: nativeEvent,
         preventDefault: function() {},
         stopPropagation: function() {},
         persist: function() {},
-        isPersistent: function() { return true; }
+        isPersistent: function() { return true; },
+        // Firefox React 17+ compatibility
+        _reactName: 'onChange',
+        _targetInst: null
       };
       
       // Walk React fiber tree to find onChange handlers
@@ -105,8 +132,27 @@
       
       // Dispatch native events as backup
       try { input.focus(); } catch (e) {}
-      input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+      
+      // For Firefox: Create events with proper target binding
+      const createFileEvent = (type) => {
+        const evt = new Event(type, { bubbles: true, cancelable: true });
+        // Try to make the event look more native
+        try {
+          Object.defineProperty(evt, 'target', { value: input, writable: false, configurable: true });
+        } catch (e) {}
+        return evt;
+      };
+      
+      input.dispatchEvent(createFileEvent('input'));
+      input.dispatchEvent(createFileEvent('change'));
+      
+      // Firefox-specific: Also try InputEvent for better compatibility
+      if (isFirefox) {
+        try {
+          const inputEvt = new InputEvent('input', { bubbles: true, cancelable: true });
+          input.dispatchEvent(inputEvt);
+        } catch (e) {}
+      }
       
       const wrapper = input.closest('.file-upload_wrapper') || input.closest('.file-upload');
       const label = input.closest('label') || document.querySelector(`label[for="${input.id}"]`);
@@ -118,19 +164,30 @@
         } catch (e) {}
       });
       
-      // Delayed event dispatches
-      setTimeout(() => {
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        input.dispatchEvent(new Event('input', { bubbles: true }));
+      // Delayed event dispatches - more aggressive for Firefox
+      const dispatchDelayedEvents = () => {
+        input.dispatchEvent(createFileEvent('change'));
+        input.dispatchEvent(createFileEvent('input'));
         try { input.blur(); } catch (e) {}
-      }, 50);
+      };
       
-      setTimeout(() => input.dispatchEvent(new Event('change', { bubbles: true })), 150);
+      setTimeout(dispatchDelayedEvents, 50);
+      setTimeout(() => input.dispatchEvent(createFileEvent('change')), 150);
       
       setTimeout(() => {
-        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(createFileEvent('change'));
         const form = input.closest('form');
         if (form) form.dispatchEvent(new Event('change', { bubbles: true }));
+        
+        // Firefox: Force React to re-check input value
+        if (isFirefox) {
+          // Try triggering React's internal value tracker
+          const tracker = input._valueTracker;
+          if (tracker) {
+            tracker.setValue('');
+          }
+          input.dispatchEvent(createFileEvent('change'));
+        }
       }, 300);
       
       // Update UI

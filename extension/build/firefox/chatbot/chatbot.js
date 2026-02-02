@@ -164,7 +164,7 @@ function addMessage(role, content) {
   const messageContent = document.createElement('div');
   messageContent.className = 'message-content';
   messageContent.textContent = content;
-  
+
   messageDiv.appendChild(avatar);
   messageDiv.appendChild(messageContent);
   messages.appendChild(messageDiv);

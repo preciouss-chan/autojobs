@@ -16,13 +16,13 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
-    // Get API key from header or fallback to environment variable
-    const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
+    // Get API key from environment variable
+    const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
         ErrorResponseSchema.parse({
-          error: "OpenAI API key is required. Please set it in extension settings or environment variable.",
+          error: "OpenAI API key not configured on server. Please set OPENAI_API_KEY environment variable.",
         }),
         { status: 401 }
       );

@@ -10,11 +10,15 @@ export default function TailorPage(): React.ReactElement {
   const [job, setJob] = useState("");
   const [loading, setLoading] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [uploadingResume, setUploadingResume] = useState(false);
   const [requirements, setRequirements] = useState<JobRequirements | null>(
     null
   );
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [currentResume, setCurrentResume] = useState<Record<string, unknown>>(
+    resumeData
+  );
   const [mergedResume, setMergedResume] = useState<Record<string, unknown> | null>(null);
 
   function extractJobText(input: string): string {
@@ -57,12 +61,50 @@ export default function TailorPage(): React.ReactElement {
       } else {
         setRequirements(data);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError("An error occurred extracting requirements. Check console.");
       console.error(err);
     }
 
     setExtracting(false);
+  }
+
+  async function handleResumeUpload(
+    event: React.ChangeEvent<HTMLInputElement>
+  ): Promise<void> {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingResume(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/parse-resume", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json()) as Record<string, unknown>;
+        setError(
+          `Upload failed: ${errorData.error || "Unknown error"}`
+        );
+        setUploadingResume(false);
+        return;
+      }
+
+      const parsedResume = (await response.json()) as Record<string, unknown>;
+      setCurrentResume(parsedResume);
+      setError(null);
+    } catch (err: unknown) {
+      setError("An error occurred uploading resume. Check console.");
+      console.error(err);
+    }
+
+    setUploadingResume(false);
   }
 
   async function handleTailor(): Promise<void> {
@@ -84,16 +126,16 @@ export default function TailorPage(): React.ReactElement {
         body: JSON.stringify({
           jobDescription: jobText,
           jobRequirements: requirements,
-          resume: resumeData,
+          resume: currentResume,
         }),
       });
 
       const data = await response.json();
       console.log("API Response:", data);
       setResult(data);
-      const merged = mergeResume(resumeData, data);
+      const merged = mergeResume(currentResume, data);
       setMergedResume(merged);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError("An error occurred. Check console for details.");
       console.error(err);
     }
@@ -120,6 +162,28 @@ export default function TailorPage(): React.ReactElement {
         <h1 className="text-3xl font-bold text-gray-900 mb-6">
           Internship Resume Tailor
         </h1>
+
+        {/* Resume Upload Section */}
+        <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <label className="block mb-2 text-sm font-medium text-gray-700">
+            Resume (PDF)
+          </label>
+          <div className="flex items-center gap-4">
+            <input
+              type="file"
+              accept=".pdf"
+              onChange={handleResumeUpload}
+              disabled={uploadingResume}
+              className="flex-1 text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 disabled:opacity-50"
+            />
+            {uploadingResume && (
+              <span className="text-sm text-gray-600">Uploading...</span>
+            )}
+          </div>
+          <p className="text-xs text-gray-600 mt-2">
+            Upload your resume PDF to parse and use for tailoring. If not provided, the default resume will be used.
+          </p>
+        </div>
 
         {/* Job Description Input */}
         <label className="block mb-2 text-sm font-medium text-gray-700">

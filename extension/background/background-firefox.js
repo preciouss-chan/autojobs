@@ -9,11 +9,9 @@ const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 // Backend URL - update this to your hosted backend URL
 const BASE_URL = "http://localhost:3000";
 
-// Get OpenAI API key from settings
-async function getOpenAIApiKey() {
-  const result = await browserAPI.storage.sync.get(['openaiApiKey']);
-  return result.openaiApiKey || null;
-}
+// Note: API key is now managed by the backend server
+// The server uses the OPENAI_API_KEY environment variable
+// Extension no longer needs to handle API keys
 
 console.log("🔥 Background script loaded (Firefox).");
 
@@ -44,6 +42,7 @@ async function handleMakeResume(msg) {
     
     if (stored.uploadedResume) {
       baseResume = stored.uploadedResume;
+      console.log("📄 Using uploaded resume");
     } else {
       const url = browserAPI.runtime.getURL("data/resume.json");
       const response = await fetch(url);
@@ -51,19 +50,16 @@ async function handleMakeResume(msg) {
         throw new Error(`Failed to load default resume: ${response.status}`);
       }
       baseResume = await response.json();
+      console.log("📄 Using default resume");
     }
 
-    const apiKey = await getOpenAIApiKey();
-    
-    if (!apiKey) {
-      throw new Error("OpenAI API key not set. Please configure it in the extension settings.");
-    }
+    console.log("🔑 API key managed by backend, calling tailor API...");
+    console.log("🌐 Backend URL:", BASE_URL);
 
     const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
       method: "POST",
       headers: { 
-        "Content-Type": "application/json",
-        "X-OpenAI-API-Key": apiKey
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({ 
         jobDescription: msg.jobDescription,
@@ -73,18 +69,25 @@ async function handleMakeResume(msg) {
 
     if (!tailorRes.ok) {
       const errorText = await tailorRes.text();
-      if (errorText.includes('<html>') || errorText.includes('403')) {
-        throw new Error(`Backend returned ${tailorRes.status}. Check that BASE_URL is correct.`);
-      }
+      console.error("❌ Tailor API error:", tailorRes.status, errorText.substring(0, 200));
+      
+      // Try to parse as JSON for better error messages
       try {
         const errorJson = JSON.parse(errorText);
         throw new Error(errorJson.error || errorJson.details || "Backend error");
       } catch {
-        throw new Error(errorText.substring(0, 300) || `Backend returned ${tailorRes.status}`);
+        // If not JSON, extract meaningful text
+        let cleanError = errorText.replace(/<[^>]*>/g, '').trim();
+        if (cleanError.length > 300) {
+          cleanError = cleanError.substring(0, 300) + "...";
+        }
+        throw new Error(cleanError || `Backend returned ${tailorRes.status}`);
       }
     }
     
     const edits = await tailorRes.json();
+    console.log("✅ Tailor API success");
+    console.log("📝 Cover letter present:", !!edits.cover_letter);
 
     if (edits.cover_letter && edits.cover_letter.trim() !== "") {
       const coverLetterBase64 = encodeUnicodeToBase64(edits.cover_letter);

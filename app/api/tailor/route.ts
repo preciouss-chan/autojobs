@@ -94,16 +94,19 @@ TASK 1: TAILOR THE RESUME
 - Highlight skills that appear in both resume and job requirements
 
 TASK 2: WRITE A COVER LETTER
-Focus on alignment:
-1. Reference the job title and key 2-3 requirements explicitly
-2. Pick 2-3 experiences/projects from resume that directly match job requirements
-3. For each selected experience, mention:
-   - The project/company name
-   - A specific technology or framework used
-   - A concrete outcome or metric achieved
-4. Explain why you're seeking THIS specific role/company
-5. Keep it 250-350 words, professional and compelling
-6. Format: Start with "Dear Hiring Manager," and end with "Sincerely," then newline then "${candidateName}"
+Write a genuine, conversational cover letter that doesn't sound AI-generated:
+1. Start with a specific, personalized opener (NOT generic phrases like "I am excited to apply")
+2. Pick ONLY the 1-2 most relevant accomplishments from the resume that directly match job requirements
+3. For the main accomplishment, go deep:
+   - Tell the story of what you built/did (be specific)
+   - Mention the technology you used and WHY it mattered
+   - Include the concrete outcome or metric
+4. Connect it naturally to why THIS job appeals to you (not generic reasons like "opportunity to work")
+5. Close with genuine interest - what specifically attracts you to the role/company
+6. Use natural language, contractions (you're, I'm), and conversational tone
+7. Avoid buzzwords like "passionate," "synergize," "leverage," "drive"
+8. Keep it 200-300 words (shorter = better for ATS)
+9. Format: Start with "Dear Hiring Manager," and end with "Sincerely," then newline then "${candidateName}"
 
 Return ONLY valid JSON (no markdown, no code blocks):
 {

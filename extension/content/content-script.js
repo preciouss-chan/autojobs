@@ -524,24 +524,42 @@ function findUploadInput(fileType = "resume") {
     }
 
     // Greenhouse-specific: Check for label elements that wrap or are associated with file inputs
-    if (fileType === "resume") {
-      const labels = document.querySelectorAll("label");
-      for (const label of labels) {
-        const labelText = label.textContent.toLowerCase();
-        if ((labelText.includes("resume") || labelText.includes("cv") || labelText.includes("document")) &&
-            !labelText.includes("cover") && !labelText.includes("letter")) {
-          // Check if label wraps the input
-          const wrappedInput = label.querySelector("input[type=file]");
-          if (wrappedInput) {
-            return wrappedInput;
+    const labels = document.querySelectorAll("label");
+    for (const label of labels) {
+      const labelText = label.textContent.toLowerCase();
+      
+      // Check for resume labels
+      if (fileType === "resume" && (labelText.includes("resume") || labelText.includes("cv") || labelText.includes("document")) &&
+          !labelText.includes("cover") && !labelText.includes("letter")) {
+        // Check if label wraps the input
+        const wrappedInput = label.querySelector("input[type=file]");
+        if (wrappedInput) {
+          return wrappedInput;
+        }
+        // Check if label is associated via 'for' attribute
+        const labelFor = label.getAttribute("for");
+        if (labelFor) {
+          const associatedInput = document.getElementById(labelFor);
+          if (associatedInput && associatedInput.type === "file") {
+            return associatedInput;
           }
-          // Check if label is associated via 'for' attribute
-          const labelFor = label.getAttribute("for");
-          if (labelFor) {
-            const associatedInput = document.getElementById(labelFor);
-            if (associatedInput && associatedInput.type === "file") {
-              return associatedInput;
-            }
+        }
+      }
+      
+      // Check for cover letter labels
+      if (fileType === "cover" && (labelText.includes("cover") || labelText.includes("letter")) &&
+          !labelText.includes("resume") && !labelText.includes("cv")) {
+        // Check if label wraps the input
+        const wrappedInput = label.querySelector("input[type=file]");
+        if (wrappedInput) {
+          return wrappedInput;
+        }
+        // Check if label is associated via 'for' attribute
+        const labelFor = label.getAttribute("for");
+        if (labelFor) {
+          const associatedInput = document.getElementById(labelFor);
+          if (associatedInput && associatedInput.type === "file") {
+            return associatedInput;
           }
         }
       }
@@ -638,39 +656,49 @@ async function injectFileIntoPage(file, fileType = "resume") {
   // DON'T click buttons that trigger file pickers - find the input directly instead
   // Workday/Greenhouse have file inputs that may be hidden, but we can find them without clicking
   
-  // For LinkedIn Easy Apply: Find file input in the modal
+  // For LinkedIn Easy Apply: Find file input in the modal with retry logic
   if (window.location.hostname.includes('linkedin.com')) {
     console.log("📘 LinkedIn detected, looking for Easy Apply file input...");
     
-    // LinkedIn modals have specific selectors
-    const linkedInContainers = [
-      document.querySelector('.jobs-easy-apply-modal'),
-      document.querySelector('.artdeco-modal--is-open'),
-      document.querySelector('[data-test-modal]'),
-      document.querySelector('.jobs-apply-form'),
-      document.querySelector('[class*="jobs-document-upload"]')
-    ];
-    
-    for (const container of linkedInContainers) {
-      if (container) {
-        const fileInput = container.querySelector('input[type=file]');
-        if (fileInput) {
-          console.log("📘 Found LinkedIn file input in modal");
-          return await injectFileIntoInput(fileInput, file, fileType);
+    // Try multiple times with delays to account for modal rendering
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        console.log(`📘 LinkedIn modal search attempt ${attempt + 1}/3...`);
+        await new Promise(r => setTimeout(r, 300 * (attempt + 1))); // Increasing delay
+      }
+      
+      // LinkedIn modals have specific selectors
+      const linkedInContainers = [
+        document.querySelector('.jobs-easy-apply-modal'),
+        document.querySelector('.artdeco-modal--is-open'),
+        document.querySelector('[data-test-modal]'),
+        document.querySelector('.jobs-apply-form'),
+        document.querySelector('[class*="jobs-document-upload"]')
+      ];
+      
+      for (const container of linkedInContainers) {
+        if (container) {
+          const fileInput = container.querySelector('input[type=file]');
+          if (fileInput) {
+            console.log("📘 Found LinkedIn file input in modal");
+            return await injectFileIntoInput(fileInput, file, fileType);
+          }
+        }
+      }
+      
+      // Try to find any file input on the page (LinkedIn might have it outside modal)
+      const allFileInputs = document.querySelectorAll('input[type=file]');
+      for (const input of allFileInputs) {
+        // Prefer inputs that are in visible modals or forms
+        const isInModal = input.closest('.artdeco-modal, .jobs-easy-apply-modal');
+        if (isInModal) {
+          console.log("📘 Found LinkedIn file input in artdeco modal");
+          return await injectFileIntoInput(input, file, fileType);
         }
       }
     }
     
-    // Try to find any file input on the page (LinkedIn might have it outside modal)
-    const allFileInputs = document.querySelectorAll('input[type=file]');
-    for (const input of allFileInputs) {
-      // Prefer inputs that are in visible modals or forms
-      const isInModal = input.closest('.artdeco-modal, .jobs-easy-apply-modal');
-      if (isInModal) {
-        console.log("📘 Found LinkedIn file input in artdeco modal");
-        return await injectFileIntoInput(input, file, fileType);
-      }
-    }
+    console.log("⚠️ LinkedIn modal detection failed after 3 attempts, continuing with fallback...");
   }
   
   // First, try to find the file input directly in Greenhouse containers

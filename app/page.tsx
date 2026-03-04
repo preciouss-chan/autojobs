@@ -2,11 +2,13 @@
 
 import { mergeResume } from "@/app/utils/mergeResume";
 import ResumePreview from "./ResumePreview";
+import { ToastContainer, useToast } from "@/app/components/Toast";
 import resumeData from "@/data/resume.json";
 import { useState } from "react";
 import type { JobRequirements } from "@/app/lib/schemas";
 
 export default function TailorPage(): React.ReactElement {
+  const { toasts, addToast, removeToast } = useToast();
   const [job, setJob] = useState("");
   const [loading, setLoading] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -15,7 +17,6 @@ export default function TailorPage(): React.ReactElement {
     null
   );
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [currentResume, setCurrentResume] = useState<Record<string, unknown>>(
     resumeData
   );
@@ -38,12 +39,11 @@ export default function TailorPage(): React.ReactElement {
 
   async function handleExtractRequirements(): Promise<void> {
     setExtracting(true);
-    setError(null);
     setRequirements(null);
 
     const jobText = extractJobText(job);
     if (!jobText) {
-      setError("Please paste a job description first.");
+      addToast("error", "Please paste a job description first.");
       setExtracting(false);
       return;
     }
@@ -57,12 +57,13 @@ export default function TailorPage(): React.ReactElement {
 
       const data = (await response.json()) as JobRequirements;
       if ("error" in data) {
-        setError(`Extraction failed: ${(data as any).error}`);
+        addToast("error", `Extraction failed: ${(data as any).error}`);
       } else {
         setRequirements(data);
+        addToast("success", "Job requirements extracted successfully!");
       }
     } catch (err: unknown) {
-      setError("An error occurred extracting requirements. Check console.");
+      addToast("error", "An error occurred extracting requirements. Check console.");
       console.error(err);
     }
 
@@ -76,7 +77,6 @@ export default function TailorPage(): React.ReactElement {
     if (!file) return;
 
     setUploadingResume(true);
-    setError(null);
 
     try {
       const formData = new FormData();
@@ -89,7 +89,8 @@ export default function TailorPage(): React.ReactElement {
 
       if (!response.ok) {
         const errorData = (await response.json()) as Record<string, unknown>;
-        setError(
+        addToast(
+          "error",
           `Upload failed: ${errorData.error || "Unknown error"}`
         );
         setUploadingResume(false);
@@ -98,9 +99,9 @@ export default function TailorPage(): React.ReactElement {
 
       const parsedResume = (await response.json()) as Record<string, unknown>;
       setCurrentResume(parsedResume);
-      setError(null);
+      addToast("success", "Resume uploaded and parsed successfully!");
     } catch (err: unknown) {
-      setError("An error occurred uploading resume. Check console.");
+      addToast("error", "An error occurred uploading resume. Check console.");
       console.error(err);
     }
 
@@ -109,12 +110,11 @@ export default function TailorPage(): React.ReactElement {
 
   async function handleTailor(): Promise<void> {
     setLoading(true);
-    setError(null);
     setResult(null);
 
     const jobText = extractJobText(job);
     if (!jobText) {
-      setError("Please paste a job description or a valid JSON object.");
+      addToast("error", "Please paste a job description first.");
       setLoading(false);
       return;
     }
@@ -135,8 +135,9 @@ export default function TailorPage(): React.ReactElement {
       setResult(data);
       const merged = mergeResume(currentResume, data);
       setMergedResume(merged);
+      addToast("success", "Resume tailored successfully!");
     } catch (err: unknown) {
-      setError("An error occurred. Check console for details.");
+      addToast("error", "An error occurred tailoring resume. Check console.");
       console.error(err);
     }
 
@@ -151,7 +152,6 @@ export default function TailorPage(): React.ReactElement {
     setJob("");
     setResult(null);
     setRequirements(null);
-    setError(null);
     setMergedResume(null);
   }
 
@@ -229,9 +229,6 @@ export default function TailorPage(): React.ReactElement {
             Clear
           </button>
         </div>
-
-        {/* Error message */}
-        {error && <p className="mt-4 text-red-600 font-medium">{error}</p>}
 
         {/* Extracted Requirements Section */}
         {requirements && (
@@ -432,6 +429,7 @@ export default function TailorPage(): React.ReactElement {
           </div>
         )}
       </div>
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 }

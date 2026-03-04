@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { ResumeSchema, ErrorResponseSchema } from "@/app/lib/schemas";
 
-export const runtime = "nodejs"; // Ensure we're using Node.js runtime
+export const runtime = "nodejs";
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<NextResponse> {
   try {
     // Get API key from header or fallback to environment variable
     const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
-    
+
     if (!apiKey) {
       return NextResponse.json(
-        { error: "OpenAI API key is required. Please set it in extension settings or environment variable." },
+        ErrorResponseSchema.parse({
+          error: "OpenAI API key is required. Please set it in extension settings or environment variable.",
+        }),
         { status: 401 }
       );
     }
@@ -20,11 +23,13 @@ export async function POST(req: Request) {
       apiKey: apiKey,
     });
     const formData = await req.formData();
-    const file = formData.get("file") as File;
+    const file = formData.get("file") as File | null;
 
     if (!file) {
       return NextResponse.json(
-        { error: "No file provided" },
+        ErrorResponseSchema.parse({
+          error: "No file provided",
+        }),
         { status: 400 }
       );
     }
@@ -45,7 +50,9 @@ export async function POST(req: Request) {
 
     if (!extractedText || extractedText.trim().length === 0) {
       return NextResponse.json(
-        { error: "Could not extract text from PDF. Please ensure the PDF contains readable text." },
+        ErrorResponseSchema.parse({
+          error: "Could not extract text from PDF. Please ensure the PDF contains readable text.",
+        }),
         { status: 400 }
       );
     }
@@ -115,23 +122,36 @@ Extract all information accurately. If a field is not present, use an empty stri
     });
 
     const jsonString = response.choices[0]?.message?.content || "{}";
-    const parsed = JSON.parse(jsonString);
-
-    return NextResponse.json(parsed);
-
-  } catch (err: any) {
-    console.error("PARSE_RESUME ERROR:", err);
-    const errorMessage = err.message || String(err);
-    const errorStack = err.stack || "";
-    console.error("Error stack:", errorStack);
     
+    try {
+      const parsed = JSON.parse(jsonString);
+      const validated = ResumeSchema.parse(parsed);
+      return NextResponse.json(validated);
+    } catch (parseErr: unknown) {
+      console.error("Failed to parse/validate resume response:", parseErr);
+      return NextResponse.json(
+        ErrorResponseSchema.parse({
+          error: "Failed to parse resume from PDF. Please ensure it contains all required fields.",
+          details: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        }),
+        { status: 500 }
+      );
+    }
+
+  } catch (err: unknown) {
+    console.error("PARSE_RESUME ERROR:", err);
+    const errorMessage =
+      err instanceof Error ? err.message : String(err);
+    const errorStack =
+      err instanceof Error ? err.stack || "" : "";
+    console.error("Error stack:", errorStack);
+
     return NextResponse.json(
-      { 
-        error: "Server error", 
+      ErrorResponseSchema.parse({
+        error: "Server error",
         details: errorMessage,
-        // Include stack in development
-        ...(process.env.NODE_ENV === "development" && { stack: errorStack })
-      },
+        ...(process.env.NODE_ENV === "development" && { stack: errorStack }),
+      }),
       { status: 500 }
     );
   }

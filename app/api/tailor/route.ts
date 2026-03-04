@@ -2,18 +2,28 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
+import {
+  TailorRequestSchema,
+  TailorResponseSchema,
+  ErrorResponseSchema,
+} from "@/app/lib/schemas";
+import type { JobRequirements } from "@/app/lib/schemas";
 
 // Fallback resume path
 const resumePath = path.join(process.cwd(), "data", "resume.json");
 
-export async function POST(req: Request) {
+export const runtime = "nodejs";
+
+export async function POST(req: Request): Promise<NextResponse> {
   try {
     // Get API key from header or fallback to environment variable
     const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
-    
+
     if (!apiKey) {
       return NextResponse.json(
-        { error: "OpenAI API key is required. Please set it in extension settings or environment variable." },
+        ErrorResponseSchema.parse({
+          error: "OpenAI API key is required. Please set it in extension settings or environment variable.",
+        }),
         { status: 401 }
       );
     }
@@ -22,14 +32,9 @@ export async function POST(req: Request) {
       apiKey: apiKey,
     });
 
-    const { jobDescription, resume: providedResume } = await req.json();
-
-    if (!jobDescription) {
-      return NextResponse.json(
-        { error: "Missing jobDescription" },
-        { status: 400 }
-      );
-    }
+    const body = await req.json();
+    const { jobDescription, jobRequirements, resume: providedResume } =
+      TailorRequestSchema.parse(body);
 
     // Use provided resume or fallback to file
     let resume;
@@ -48,54 +53,73 @@ export async function POST(req: Request) {
     }
 
     const candidateName = resume.name || "Candidate";
-    
+
+    // Build requirements context from extracted requirements if provided
+    let requirementsContext = "";
+    if (jobRequirements) {
+      const req_typed = jobRequirements as JobRequirements;
+      requirementsContext = `
+=== EXTRACTED JOB REQUIREMENTS ===
+Title: ${req_typed.title}
+Seniority: ${req_typed.seniority_level}
+Required Skills: ${req_typed.required_skills.join(", ")}
+Nice-to-Have Skills: ${req_typed.nice_to_have_skills.join(", ")}
+Tools/Frameworks: ${req_typed.required_tools_frameworks.join(", ")}
+Key Responsibilities: ${req_typed.key_responsibilities.join(", ")}
+Experience Required: ${req_typed.experience_years ? req_typed.experience_years + "+ years" : "Not specified"}
+Domain: ${req_typed.domain}
+Team Focus: ${req_typed.team_focus}
+=== END REQUIREMENTS ===`;
+    }
+
     const prompt = `You are tailoring a resume and writing a cover letter for ${candidateName}.
 
 === CANDIDATE'S RESUME ===
 ${JSON.stringify(resume, null, 2)}
 === END RESUME ===
 
+${requirementsContext}
+
 === JOB DESCRIPTION ===
 ${jobDescription}
 === END JOB DESCRIPTION ===
 
 TASK 1: TAILOR THE RESUME
-- Extract keywords from the job description (technologies, skills, responsibilities)
-- Rewrite bullets to incorporate these keywords naturally
-- Add metrics and quantifiable achievements
-- Keep it to ONE PAGE (3-5 bullets per experience, 2-3 per project)
-- Update summary to be 2-3 sentences matching job requirements
+- Match resume content to job requirements (prioritize required skills over nice-to-have)
+- Rewrite experience bullets to highlight relevant technologies and responsibilities
+- Add specific metrics and quantifiable achievements where applicable
+- Keep experience section to 3-5 bullets per position (one page format)
+- Keep projects section to 2-3 bullets per project
+- Update summary to be 2-3 sentences, opening with how you match the job title/seniority level
+- Highlight skills that appear in both resume and job requirements
 
 TASK 2: WRITE A COVER LETTER
-CRITICAL RULES:
-1. Identify which projects/experiences from the resume MATCH the job requirements:
-   - If job mentions AI/ML/chatbots → mention "Rizz Chatbot" (fine-tuned GPT-3.5)
-   - If job mentions games/Unity/game dev → mention "Flappy Bird with Super Powers" (Unity game)
-   - If job mentions VR/immersive → mention "Dreamscape Learn" (VR lab operator)
-   - If job mentions web dev/React/Python/full-stack → mention "Apply Boost" (Flask + Next.js)
-   - If job mentions automation/finance → mention "Automated Budget App"
-   
-2. ONLY mention 2-3 experiences/projects that are ACTUALLY relevant to THIS job
-3. Reference them BY NAME with SPECIFIC details (what you built, technologies used, results)
-4. Connect YOUR experience to THEIR requirements explicitly
-5. Keep it 250-350 words, focused and compelling
-6. End with "Sincerely," then blank line, then "${candidateName}"
+Focus on alignment:
+1. Reference the job title and key 2-3 requirements explicitly
+2. Pick 2-3 experiences/projects from resume that directly match job requirements
+3. For each selected experience, mention:
+   - The project/company name
+   - A specific technology or framework used
+   - A concrete outcome or metric achieved
+4. Explain why you're seeking THIS specific role/company
+5. Keep it 250-350 words, professional and compelling
+6. Format: Start with "Dear Hiring Manager," and end with "Sincerely," then newline then "${candidateName}"
 
-Return JSON:
+Return ONLY valid JSON (no markdown, no code blocks):
 {
-  "updated_summary": "2-3 sentence summary with job keywords",
+  "updated_summary": "2-3 sentence summary tailored to job requirements",
   "project_edits": {
-    "ProjectName": ["bullet with keywords", "bullet with metrics", "bullet with details"]
+    "ProjectName": ["rewritten bullet", "rewritten bullet", ...]
   },
   "experience_edits": {
-    "CompanyName": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"]
+    "CompanyName": ["rewritten bullet", "rewritten bullet", ...]
   },
   "skills_to_add": {
-    "languages": ["relevant languages from job"],
-    "frameworks_libraries": ["relevant frameworks"],
-    "tools": ["relevant tools"]
+    "languages": ["skill from job requirements"],
+    "frameworks_libraries": ["framework from job requirements"],
+    "tools": ["tool from job requirements"]
   },
-  "cover_letter": "Full cover letter text. MUST mention specific project/experience names. MUST reference specific job requirements. Start with 'Dear Hiring Manager,' end with 'Sincerely,' then newline then '${candidateName}'"
+  "cover_letter": "Full cover letter text with 'Dear Hiring Manager,' at start and 'Sincerely,\\n${candidateName}' at end"
 }`;
     
     const response = await client.chat.completions.create({
@@ -103,21 +127,43 @@ Return JSON:
       messages: [
         {
           role: "user",
-          content: prompt
-        }
+          content: prompt,
+        },
       ],
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
     });
 
     const jsonString = response.choices[0]?.message?.content || "{}";
-    const parsed = JSON.parse(jsonString);
-    console.log(parsed);
-    return NextResponse.json(parsed);
+    
+    try {
+      const parsed = JSON.parse(jsonString);
+      const validated = TailorResponseSchema.parse(parsed);
+      console.log("TAILOR RESPONSE:", validated);
+      return NextResponse.json(validated);
+    } catch (parseErr: unknown) {
+      console.error("Failed to parse/validate tailor response:", parseErr);
+      return NextResponse.json(
+        ErrorResponseSchema.parse({
+          error: "Failed to parse tailoring response from API",
+          details: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        }),
+        { status: 500 }
+      );
+    }
+  } catch (err: unknown) {
+    const errorMessage =
+      err instanceof Error ? err.message : String(err);
+    const errorStack =
+      err instanceof Error ? err.stack || "" : "";
+    console.error("TAILOR ERROR:", err);
+    console.error("Error stack:", errorStack);
 
-  } catch (err: any) {
-    console.error("API ERROR:", err);
     return NextResponse.json(
-      { error: "Server error", details: err.message || String(err) },
+      ErrorResponseSchema.parse({
+        error: "Server error",
+        details: errorMessage,
+        ...(process.env.NODE_ENV === "development" && { stack: errorStack }),
+      }),
       { status: 500 }
     );
   }

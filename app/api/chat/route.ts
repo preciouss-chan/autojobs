@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { ChatResponseSchema, ErrorResponseSchema } from "@/app/lib/schemas";
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<NextResponse> {
   try {
     // Get API key from header or fallback to environment variable
     const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
-    
+
     if (!apiKey) {
       return NextResponse.json(
-        { error: "OpenAI API key is required. Please set it in extension settings or environment variable." },
+        ErrorResponseSchema.parse({
+          error: "OpenAI API key is required. Please set it in extension settings or environment variable.",
+        }),
         { status: 401 }
       );
     }
@@ -23,7 +26,9 @@ export async function POST(req: Request) {
 
     if (!message) {
       return NextResponse.json(
-        { error: "Message is required" },
+        ErrorResponseSchema.parse({
+          error: "Message is required",
+        }),
         { status: 400 }
       );
     }
@@ -132,20 +137,41 @@ NEVER give generic answers. ALWAYS be specific with names, numbers, and details 
     const response = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: messages,
-      temperature: 0.8, // Slightly higher for more natural responses
-      max_tokens: 600 // Increased for more detailed answers
+      temperature: 0.4, // Lower for more deterministic interview answers
+      max_tokens: 600, // Increased for more detailed answers
     });
 
-    const assistantMessage = response.choices[0]?.message?.content || "I apologize, but I couldn't generate a response.";
+    const assistantMessage =
+      response.choices[0]?.message?.content ||
+      "I apologize, but I couldn't generate a response.";
 
-    return NextResponse.json({ 
-      response: assistantMessage 
-    });
+    try {
+      const validated = ChatResponseSchema.parse({
+        response: assistantMessage,
+        has_context: !!jobDescription,
+      });
+      return NextResponse.json(validated);
+    } catch (parseErr: unknown) {
+      console.error("Failed to validate chat response:", parseErr);
+      return NextResponse.json(
+        ErrorResponseSchema.parse({
+          error: "Failed to process chat response",
+          details:
+            parseErr instanceof Error ? parseErr.message : String(parseErr),
+        }),
+        { status: 500 }
+      );
+    }
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Chat API ERROR:", err);
+    const errorMessage =
+      err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: "Server error", details: err.message || String(err) },
+      ErrorResponseSchema.parse({
+        error: "Server error",
+        details: errorMessage,
+      }),
       { status: 500 }
     );
   }

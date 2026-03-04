@@ -1,4 +1,4 @@
-export function mergeResume(baseResume: any, edits: any) {
+export function mergeResume(baseResume: any, edits: any): any {
   const updatedResume = structuredClone(baseResume);
 
   // 1. Merge updated summary
@@ -15,7 +15,7 @@ export function mergeResume(baseResume: any, edits: any) {
         (p: any) => p.name.toLowerCase() === projectName.toLowerCase()
       );
 
-      if (project && newBullets.length > 0) {
+      if (project && Array.isArray(newBullets) && newBullets.length > 0) {
         project.bullets = newBullets;
       }
     }
@@ -30,7 +30,7 @@ export function mergeResume(baseResume: any, edits: any) {
         (e: any) => e.company.toLowerCase() === companyName.toLowerCase()
       );
 
-      if (exp && newBullets.length > 0) {
+      if (exp && Array.isArray(newBullets) && newBullets.length > 0) {
         exp.bullets = newBullets;
       }
     }

@@ -1,34 +1,71 @@
 "use client";
 
 import { mergeResume } from "@/app/utils/mergeResume";
-import ResumePreview from "./ResumePreview.tsx";
+import ResumePreview from "./ResumePreview";
 import resumeData from "@/data/resume.json";
 import { useState } from "react";
+import type { JobRequirements } from "@/app/lib/schemas";
 
-export default function TailorPage() {
+export default function TailorPage(): React.ReactElement {
   const [job, setJob] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [requirements, setRequirements] = useState<JobRequirements | null>(
+    null
+  );
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showRaw, setShowRaw] = useState(false);
-  const [mergedResume, setMergedResume] = useState<any>(null);
+  const [mergedResume, setMergedResume] = useState<Record<string, unknown> | null>(null);
 
-
-  // Accept raw job text OR JSON { "jobDescription": "..." }
-  function extractJobText(input: string) {
+  function extractJobText(input: string): string {
     input = input.trim();
     if (!input) return "";
 
     if (input.startsWith("{") && input.endsWith("}")) {
       try {
-        const parsed = JSON.parse(input);
+        const parsed = JSON.parse(input) as { jobDescription?: string };
         if (parsed?.jobDescription) return parsed.jobDescription;
-      } catch {}
+      } catch {
+        // Continue with raw input if JSON parsing fails
+      }
     }
     return input;
   }
 
-  async function handleTailor() {
+  async function handleExtractRequirements(): Promise<void> {
+    setExtracting(true);
+    setError(null);
+    setRequirements(null);
+
+    const jobText = extractJobText(job);
+    if (!jobText) {
+      setError("Please paste a job description first.");
+      setExtracting(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/extract-requirements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobDescription: jobText }),
+      });
+
+      const data = (await response.json()) as JobRequirements;
+      if ("error" in data) {
+        setError(`Extraction failed: ${(data as any).error}`);
+      } else {
+        setRequirements(data);
+      }
+    } catch (err: any) {
+      setError("An error occurred extracting requirements. Check console.");
+      console.error(err);
+    }
+
+    setExtracting(false);
+  }
+
+  async function handleTailor(): Promise<void> {
     setLoading(true);
     setError(null);
     setResult(null);
@@ -44,9 +81,10 @@ export default function TailorPage() {
       const response = await fetch("/api/tailor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           jobDescription: jobText,
-          resume: resumeData 
+          jobRequirements: requirements,
+          resume: resumeData,
         }),
       });
 
@@ -63,8 +101,16 @@ export default function TailorPage() {
     setLoading(false);
   }
 
-  function copy(text: string) {
+  function copy(text: string): void {
     navigator.clipboard.writeText(text);
+  }
+
+  function handleClear(): void {
+    setJob("");
+    setResult(null);
+    setRequirements(null);
+    setError(null);
+    setMergedResume(null);
   }
 
   return (
@@ -89,37 +135,139 @@ export default function TailorPage() {
         {/* Buttons */}
         <div className="flex gap-4 mt-4">
           <button
-            onClick={handleTailor}
-            disabled={loading}
+            onClick={handleExtractRequirements}
+            disabled={extracting || job.trim() === ""}
             className={`px-5 py-2 rounded-lg text-white font-medium transition ${
-              loading ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
+              extracting || job.trim() === ""
+                ? "bg-gray-400"
+                : "bg-green-600 hover:bg-green-700"
+            }`}
+          >
+            {extracting ? "Extracting..." : "Extract Requirements"}
+          </button>
+
+          <button
+            onClick={handleTailor}
+            disabled={loading || job.trim() === ""}
+            className={`px-5 py-2 rounded-lg text-white font-medium transition ${
+              loading || job.trim() === ""
+                ? "bg-blue-400"
+                : "bg-blue-600 hover:bg-blue-700"
             }`}
           >
             {loading ? "Tailoring..." : "Tailor Resume"}
           </button>
 
           <button
-            onClick={() => {
-              setJob("");
-              setResult(null);
-              setError(null);
-            }}
+            onClick={handleClear}
             className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
           >
             Clear
           </button>
-
-          
         </div>
 
         {/* Error message */}
         {error && <p className="mt-4 text-red-600 font-medium">{error}</p>}
 
-        {/* Formatted Output Sections */}
-        {result && !showRaw && (
-          <div className="mt-10 space-y-8 text-gray-900">
-            
+        {/* Extracted Requirements Section */}
+        {requirements && (
+          <section className="mt-10 p-6 border rounded-lg bg-green-50">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              Extracted Job Requirements
+            </h2>
+            <div className="grid grid-cols-2 gap-4 text-sm text-gray-800">
+              <div>
+                <p className="font-semibold">Job Title</p>
+                <p>{requirements.title}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Seniority Level</p>
+                <p>{requirements.seniority_level}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Domain</p>
+                <p>{requirements.domain}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Team Focus</p>
+                <p>{requirements.team_focus}</p>
+              </div>
+              {requirements.experience_years && (
+                <div>
+                  <p className="font-semibold">Experience Required</p>
+                  <p>{requirements.experience_years}+ years</p>
+                </div>
+              )}
+            </div>
 
+            <div className="mt-4">
+              <p className="font-semibold text-gray-900 mb-2">
+                Required Skills
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {requirements.required_skills.map((skill: string) => (
+                  <span
+                    key={skill}
+                    className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs"
+                  >
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {requirements.nice_to_have_skills.length > 0 && (
+              <div className="mt-4">
+                <p className="font-semibold text-gray-900 mb-2">
+                  Nice-to-Have Skills
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {requirements.nice_to_have_skills.map((skill: string) => (
+                    <span
+                      key={skill}
+                      className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4">
+              <p className="font-semibold text-gray-900 mb-2">
+                Required Tools & Frameworks
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {requirements.required_tools_frameworks.map((tool: string) => (
+                  <span
+                    key={tool}
+                    className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs"
+                  >
+                    {tool}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <p className="font-semibold text-gray-900 mb-2">
+                Key Responsibilities
+              </p>
+              <ul className="list-disc ml-5 space-y-1">
+                {requirements.key_responsibilities.map((resp: string) => (
+                  <li key={resp} className="text-gray-700">
+                    {resp}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
+
+        {/* Formatted Output Sections */}
+        {result && (
+          <div className="mt-10 space-y-8 text-gray-900">
             {/* Skills to Add */}
             <section>
               <h2 className="text-xl font-semibold">Skills to Add</h2>
@@ -130,28 +278,32 @@ export default function TailorPage() {
                   (arr: any) => arr && arr.length > 0
                 ) ? (
                   <div className="space-y-2">
-                    {Object.entries(result.skills_to_add).map(([category, items]: any) =>
-                      items && items.length > 0 ? (
-                        <div key={category}>
-                          <span className="font-semibold capitalize">{category}:</span>{" "}
-                          {items.join(", ")}
-                        </div>
-                      ) : null
+                    {Object.entries(result.skills_to_add).map(
+                      ([category, items]: any) =>
+                        items && items.length > 0 ? (
+                          <div key={category}>
+                            <span className="font-semibold capitalize">
+                              {category}:
+                            </span>{" "}
+                            {items.join(", ")}
+                          </div>
+                        ) : null
                     )}
                   </div>
                 ) : (
-                  <p className="text-gray-500">No additional skills suggested.</p>
+                  <p className="text-gray-500">
+                    No additional skills suggested.
+                  </p>
                 )}
               </div>
             </section>
-
 
             {/* Cover Letter */}
             <section>
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold">Cover Letter</h2>
                 <button
-                  onClick={() => copy(result.cover_letter || "")}
+                  onClick={() => copy(String(result.cover_letter || ""))}
                   className="text-blue-600 hover:underline"
                 >
                   Copy
@@ -160,56 +312,56 @@ export default function TailorPage() {
 
               <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm whitespace-pre-wrap">
                 {result.cover_letter ? (
-                  result.cover_letter
+                  String(result.cover_letter)
                 ) : (
                   <p className="text-gray-500">No cover letter returned.</p>
                 )}
               </div>
             </section>
+
             {mergedResume && (
               <>
                 <div className="mt-10">
-                  <h2 className="text-2xl font-bold mb-4 text-gray-900">Resume Preview</h2>
+                  <h2 className="text-2xl font-bold mb-4 text-gray-900">
+                    Resume Preview
+                  </h2>
                   <ResumePreview resume={mergedResume} />
                 </div>
                 <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch("/api/export/pdf", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(mergedResume),
+                        });
 
-                <button
-                  onClick={async () => {
-                    try {
-                      const res = await fetch("/api/export/pdf", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(mergedResume),
-                      });
+                        const contentType = res.headers.get("content-type") ?? "";
 
-                      const contentType = res.headers.get("content-type") ?? "";
+                        if (!contentType.includes("pdf")) {
+                          const errorText = await res.text();
+                          console.error("PDF ERROR:", errorText);
+                          alert("PDF FAILED — Check console");
+                          return;
+                        }
 
-                      if (!contentType.includes("pdf")) {
-                        const errorText = await res.text();
-                        console.error("PDF ERROR:", errorText);
-                        alert("PDF FAILED — Check console");
-                        return;
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = "resume.pdf";
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch (err) {
+                        console.error(err);
+                        alert("Something went wrong generating PDF");
                       }
-
-                      const blob = await res.blob();
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = "resume.pdf";
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    } catch (err) {
-                      console.error(err);
-                      alert("Something went wrong generating PDF");
-                    }
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded"
-                >
-                  Download PDF
-                </button>
-
-
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded"
+                  >
+                    Download PDF
+                  </button>
                 </div>
               </>
             )}
@@ -219,4 +371,3 @@ export default function TailorPage() {
     </div>
   );
 }
-

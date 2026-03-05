@@ -6,15 +6,6 @@ import { mergeResume } from "../utils/mergeResume.js";
 // For production, use your deployed backend URL
 const BASE_URL = "http://localhost:3000"; // Change this to your hosted backend URL
 
-// Get OpenAI API key from settings
-async function getOpenAIApiKey() {
-  return new Promise((resolve) => {
-    chrome.storage.sync.get(['openaiApiKey'], (result) => {
-      resolve(result.openaiApiKey || null);
-    });
-  });
-}
-
 console.log("🔥 Background worker loaded.");
 
 // Unicode-safe base64 encoding
@@ -68,23 +59,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           console.log("📄 Using default resume");
         }
 
-        // Get API key from settings
-        const apiKey = await getOpenAIApiKey();
-        
-        if (!apiKey) {
-          throw new Error("OpenAI API key not set. Please configure it in the extension settings.");
-        }
-
-        console.log("🔑 API key found, calling tailor API...");
+        console.log("🔑 API key managed by backend, calling tailor API...");
         console.log("🌐 Backend URL:", BASE_URL);
         console.log("📋 Request URL will be:", `${BASE_URL}/api/tailor`);
 
-        // Call tailor API with resume data and user's API key
+        // Call tailor API with resume data (API key is handled by backend)
         const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
           method: "POST",
           headers: { 
-            "Content-Type": "application/json",
-            "X-OpenAI-API-Key": apiKey // Pass API key in header
+            "Content-Type": "application/json"
           },
           body: JSON.stringify({ 
             jobDescription: msg.jobDescription,

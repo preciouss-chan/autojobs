@@ -33,7 +33,7 @@ function injectGreenhouseScript() {
   return new Promise((resolve) => {
     try {
       const script = document.createElement('script');
-      script.src = chrome.runtime.getURL('script/greenhouse-inject.js');
+      script.src = browserAPI.runtime.getURL('script/greenhouse-inject.js');
       script.onload = () => {
         greenhouseScriptInjected = true;
         resolve();
@@ -55,7 +55,7 @@ function injectAshbyScript() {
   return new Promise((resolve) => {
     try {
       const script = document.createElement('script');
-      script.src = chrome.runtime.getURL('script/ashby-inject.js');
+      script.src = browserAPI.runtime.getURL('script/ashby-inject.js');
       script.onload = () => {
         ashbyScriptInjected = true;
         resolve();
@@ -66,6 +66,145 @@ function injectAshbyScript() {
       resolve();
     }
   });
+}
+
+// Inject Workday page-context script for React handling
+let workdayScriptInjected = false;
+
+function injectWorkdayScript() {
+  if (workdayScriptInjected) return Promise.resolve();
+  
+  return new Promise((resolve) => {
+    try {
+      console.log("⏰ Attempting to inject Workday script...");
+      const script = document.createElement('script');
+      
+      // Try external script first (works in Chrome)
+      const scriptUrl = browserAPI.runtime.getURL('script/workday-inject.js');
+      console.log("⏰ Script URL:", scriptUrl);
+      script.src = scriptUrl;
+      
+      let resolved = false;
+      const resolveOnce = () => {
+        if (!resolved) {
+          resolved = true;
+          workdayScriptInjected = true;
+          resolve();
+        }
+      };
+      
+      script.onload = () => {
+        console.log("⏰ External script loaded successfully");
+        resolveOnce();
+      };
+      
+      script.onerror = (error) => {
+        // Firefox might block external script due to CSP
+        console.log("⏰ External script injection failed, trying inline injection...");
+        console.log("⏰ Error details:", error);
+        injectWorkdayScriptInline().then(resolveOnce);
+      };
+      
+      (document.head || document.documentElement).appendChild(script);
+      
+      // Timeout fallback in case script never loads
+      setTimeout(resolveOnce, 2000);
+    } catch (e) {
+      console.error("⏰ Exception in script injection:", e.message);
+      resolve();
+    }
+  });
+}
+
+// Inline injection as fallback for Firefox CSP restrictions
+async function injectWorkdayScriptInline() {
+  if (workdayScriptInjected) return;
+  
+  try {
+    console.log("⏰ Starting inline injection...");
+    // Fetch the script content
+    const url = browserAPI.runtime.getURL('script/workday-inject.js');
+    console.log("⏰ Fetching script from:", url);
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch: ${response.status}`);
+    }
+    
+    const code = await response.text();
+    console.log("⏰ Script fetched, length:", code.length);
+    
+    // Create and inject inline script
+    const script = document.createElement('script');
+    script.textContent = code;
+    script.type = 'text/javascript';
+    
+    (document.head || document.documentElement).appendChild(script);
+    
+    workdayScriptInjected = true;
+    console.log("✅ Workday script injected inline successfully");
+    return true;
+  } catch (e) {
+    console.error("❌ Inline injection failed:", e.message);
+    
+    // Last resort: inject the code directly
+    console.log("⏰ Trying direct code injection as last resort...");
+    try {
+      injectWorkdayScriptDirect();
+      console.log("✅ Direct injection attempted");
+      return true;
+    } catch (e2) {
+      console.error("❌ Direct injection also failed:", e2.message);
+      return false;
+    }
+  }
+}
+
+// Direct code injection as ultimate fallback
+function injectWorkdayScriptDirect() {
+   // This code runs in page context to handle Workday uploads
+   window.AUTOJOBS_WORKDAY_HANDLER = function(fileData, fileName, fileType, mimeType) {
+     console.log("⏰ Direct handler called for:", fileName, fileType);
+     
+     try {
+       // Convert base64 to File
+       const binary = atob(fileData);
+       const bytes = new Uint8Array(binary.length);
+       for (let i = 0; i < binary.length; i++) {
+         bytes[i] = binary.charCodeAt(i);
+       }
+       const file = new File([bytes], fileName, { type: mimeType || 'application/pdf' });
+
+       // Find the file input
+       const targetInput = document.querySelector('[data-automation-id="file-upload-input-ref"]');
+       
+       if (!targetInput) {
+         console.error("⏰ No file input found");
+         return false;
+       }
+
+       console.log("⏰ Found target input, setting files...");
+
+       // Set files using DataTransfer
+       const dt = new DataTransfer();
+       dt.items.add(file);
+       
+       Object.defineProperty(targetInput, 'files', {
+         value: dt.files,
+         writable: false,
+         configurable: true
+       });
+
+       console.log("✅ Direct handler completed - file set without events");
+       // Note: We don't dispatch events here because the page-context script 
+       // (workday-inject.js) handles that via the AUTOJOBS_WORKDAY_UPLOAD event.
+       // This direct handler is only for Firefox CSP fallback.
+       return true;
+     } catch (err) {
+       console.error("❌ Direct handler error:", err);
+       return false;
+     }
+  };
 }
 
 // Helper to dispatch CustomEvent that works in both Chrome and Firefox
@@ -112,6 +251,52 @@ async function uploadViaAshbyContext(file, fileType) {
         fileType, 
         mimeType: file.type 
       });
+    };
+    reader.onerror = () => resolve(false);
+    reader.readAsDataURL(file);
+  });
+}
+
+// Use page context injection for Workday file uploads
+async function uploadViaWorkdayContext(file, fileType) {
+  await injectWorkdayScript();
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1];
+      
+      // Use ONLY the event-based approach (workday-inject.js handles it)
+      // Don't use direct handler here - it will execute both paths and cause double uploads
+      
+      let resultReceived = false;
+      const handleResult = (e) => {
+        resultReceived = true;
+        window.removeEventListener('AUTOJOBS_WORKDAY_RESULT', handleResult);
+        // Access detail safely - Firefox wraps it
+        const success = e.detail?.success ?? (typeof e.detail === 'object' ? e.detail.wrappedJSObject?.success : false);
+        console.log("⏰ Received AUTOJOBS_WORKDAY_RESULT:", success);
+        resolve(success);
+      };
+      window.addEventListener('AUTOJOBS_WORKDAY_RESULT', handleResult);
+      
+       // Timeout: assume success if no response (page-context script either succeeded or is handling it)
+       // This prevents double-uploads from content-script fallback code running after page-context attempt
+       setTimeout(() => {
+         window.removeEventListener('AUTOJOBS_WORKDAY_RESULT', handleResult);
+         if (!resultReceived) {
+           console.log("⏰ Workday upload timeout - assuming page-context script handled it");
+           resolve(true);
+         }
+       }, 3000);
+       
+       dispatchPageEvent('AUTOJOBS_WORKDAY_UPLOAD', { 
+         fileData: base64, 
+         fileName: file.name, 
+         fileType, 
+         mimeType: file.type 
+       });
     };
     reader.onerror = () => resolve(false);
     reader.readAsDataURL(file);
@@ -181,10 +366,13 @@ function textToFile(text, filename = "cover_letter.txt", mime = "text/plain") {
 }
 
 function findUploadInput(fileType = "resume") {
+  console.log(`🔍 findUploadInput() called for fileType: ${fileType}`);
+  console.log(`📍 Current URL: ${window.location.href}`);
+  
   // Check if we're on Ashby (used by Patreon, etc.)
   const isAshby = document.querySelector('.ashby-application-form-autofill-uploader') ||
-                  document.querySelector('[class*="ashby-application"]') ||
-                  document.querySelector('div[class*="_autofillPane"]');
+                   document.querySelector('[class*="ashby-application"]') ||
+                   document.querySelector('div[class*="_autofillPane"]');
   
   if (isAshby) {
     console.log("🎨 Ashby detected, using Ashby-specific selectors...");
@@ -524,24 +712,42 @@ function findUploadInput(fileType = "resume") {
     }
 
     // Greenhouse-specific: Check for label elements that wrap or are associated with file inputs
-    if (fileType === "resume") {
-      const labels = document.querySelectorAll("label");
-      for (const label of labels) {
-        const labelText = label.textContent.toLowerCase();
-        if ((labelText.includes("resume") || labelText.includes("cv") || labelText.includes("document")) &&
-            !labelText.includes("cover") && !labelText.includes("letter")) {
-          // Check if label wraps the input
-          const wrappedInput = label.querySelector("input[type=file]");
-          if (wrappedInput) {
-            return wrappedInput;
+    const labels = document.querySelectorAll("label");
+    for (const label of labels) {
+      const labelText = label.textContent.toLowerCase();
+      
+      // Check for resume labels
+      if (fileType === "resume" && (labelText.includes("resume") || labelText.includes("cv") || labelText.includes("document")) &&
+          !labelText.includes("cover") && !labelText.includes("letter")) {
+        // Check if label wraps the input
+        const wrappedInput = label.querySelector("input[type=file]");
+        if (wrappedInput) {
+          return wrappedInput;
+        }
+        // Check if label is associated via 'for' attribute
+        const labelFor = label.getAttribute("for");
+        if (labelFor) {
+          const associatedInput = document.getElementById(labelFor);
+          if (associatedInput && associatedInput.type === "file") {
+            return associatedInput;
           }
-          // Check if label is associated via 'for' attribute
-          const labelFor = label.getAttribute("for");
-          if (labelFor) {
-            const associatedInput = document.getElementById(labelFor);
-            if (associatedInput && associatedInput.type === "file") {
-              return associatedInput;
-            }
+        }
+      }
+      
+      // Check for cover letter labels
+      if (fileType === "cover" && (labelText.includes("cover") || labelText.includes("letter")) &&
+          !labelText.includes("resume") && !labelText.includes("cv")) {
+        // Check if label wraps the input
+        const wrappedInput = label.querySelector("input[type=file]");
+        if (wrappedInput) {
+          return wrappedInput;
+        }
+        // Check if label is associated via 'for' attribute
+        const labelFor = label.getAttribute("for");
+        if (labelFor) {
+          const associatedInput = document.getElementById(labelFor);
+          if (associatedInput && associatedInput.type === "file") {
+            return associatedInput;
           }
         }
       }
@@ -621,56 +827,69 @@ function findUploadInput(fileType = "resume") {
     return visibleInputs[0];
   }
   
-  // If no visible inputs, use the first hidden one (common for Workday/Greenhouse)
-  if (allInputs.length > 0) {
-    // Prefer inputs with id="resume" for Greenhouse
-    const greenhouseResumeInput = allInputs.find(i => i.id === 'resume' || i.name?.includes('resume'));
-    if (greenhouseResumeInput) {
-      return greenhouseResumeInput;
-    }
-    return allInputs[0];
-  }
-  
-  return null;
-}
+   // If no visible inputs, use the first hidden one (common for Workday/Greenhouse)
+   if (allInputs.length > 0) {
+     // Prefer inputs with id="resume" for Greenhouse
+     const greenhouseResumeInput = allInputs.find(i => i.id === 'resume' || i.name?.includes('resume'));
+     if (greenhouseResumeInput) {
+       console.log(`✅ Found ${fileType} input by ID/name match:`, greenhouseResumeInput);
+       return greenhouseResumeInput;
+     }
+     console.log(`✅ Using first ${fileType} input from allInputs:`, allInputs[0]);
+     return allInputs[0];
+   }
+   
+   console.log(`❌ No file inputs found for ${fileType} on ${window.location.href}`);
+   return null;
+ }
 
 async function injectFileIntoPage(file, fileType = "resume") {
   // DON'T click buttons that trigger file pickers - find the input directly instead
   // Workday/Greenhouse have file inputs that may be hidden, but we can find them without clicking
   
-  // For LinkedIn Easy Apply: Find file input in the modal
+  // For LinkedIn Easy Apply: Find file input in the modal with retry logic
   if (window.location.hostname.includes('linkedin.com')) {
     console.log("📘 LinkedIn detected, looking for Easy Apply file input...");
     
-    // LinkedIn modals have specific selectors
-    const linkedInContainers = [
-      document.querySelector('.jobs-easy-apply-modal'),
-      document.querySelector('.artdeco-modal--is-open'),
-      document.querySelector('[data-test-modal]'),
-      document.querySelector('.jobs-apply-form'),
-      document.querySelector('[class*="jobs-document-upload"]')
-    ];
-    
-    for (const container of linkedInContainers) {
-      if (container) {
-        const fileInput = container.querySelector('input[type=file]');
-        if (fileInput) {
-          console.log("📘 Found LinkedIn file input in modal");
-          return await injectFileIntoInput(fileInput, file, fileType);
+    // Try multiple times with delays to account for modal rendering
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        console.log(`📘 LinkedIn modal search attempt ${attempt + 1}/3...`);
+        await new Promise(r => setTimeout(r, 300 * (attempt + 1))); // Increasing delay
+      }
+      
+      // LinkedIn modals have specific selectors
+      const linkedInContainers = [
+        document.querySelector('.jobs-easy-apply-modal'),
+        document.querySelector('.artdeco-modal--is-open'),
+        document.querySelector('[data-test-modal]'),
+        document.querySelector('.jobs-apply-form'),
+        document.querySelector('[class*="jobs-document-upload"]')
+      ];
+      
+      for (const container of linkedInContainers) {
+        if (container) {
+          const fileInput = container.querySelector('input[type=file]');
+          if (fileInput) {
+            console.log("📘 Found LinkedIn file input in modal");
+            return await injectFileIntoInput(fileInput, file, fileType);
+          }
+        }
+      }
+      
+      // Try to find any file input on the page (LinkedIn might have it outside modal)
+      const allFileInputs = document.querySelectorAll('input[type=file]');
+      for (const input of allFileInputs) {
+        // Prefer inputs that are in visible modals or forms
+        const isInModal = input.closest('.artdeco-modal, .jobs-easy-apply-modal');
+        if (isInModal) {
+          console.log("📘 Found LinkedIn file input in artdeco modal");
+          return await injectFileIntoInput(input, file, fileType);
         }
       }
     }
     
-    // Try to find any file input on the page (LinkedIn might have it outside modal)
-    const allFileInputs = document.querySelectorAll('input[type=file]');
-    for (const input of allFileInputs) {
-      // Prefer inputs that are in visible modals or forms
-      const isInModal = input.closest('.artdeco-modal, .jobs-easy-apply-modal');
-      if (isInModal) {
-        console.log("📘 Found LinkedIn file input in artdeco modal");
-        return await injectFileIntoInput(input, file, fileType);
-      }
-    }
+    console.log("⚠️ LinkedIn modal detection failed after 3 attempts, continuing with fallback...");
   }
   
   // First, try to find the file input directly in Greenhouse containers
@@ -710,17 +929,21 @@ async function injectFileIntoPage(file, fileType = "resume") {
     }
   }
   
-  // Use findUploadInput as fallback
-  const input = findUploadInput(fileType);
-  if (input) {
-    return await injectFileIntoInput(input, file, fileType);
-  }
-  
-  // Last resort: Try to find ANY file input
-  const anyInput = document.querySelector("input[type=file]");
-  if (anyInput) {
-    return await injectFileIntoInput(anyInput, file, fileType);
-  }
+   // Use findUploadInput as fallback
+   const input = findUploadInput(fileType);
+   if (input) {
+     console.log(`✅ Found ${fileType} input via findUploadInput()`, input);
+     return await injectFileIntoInput(input, file, fileType);
+   }
+   
+   // Last resort: Try to find ANY file input
+   const anyInput = document.querySelector("input[type=file]");
+   if (anyInput) {
+     console.log(`⚠️ Using ANY file input as last resort for ${fileType}`, anyInput);
+     return await injectFileIntoInput(anyInput, file, fileType);
+   }
+
+   console.error(`❌ FAILED: No file input found for ${fileType}`);
   
     return false;
   }
@@ -728,8 +951,8 @@ async function injectFileIntoPage(file, fileType = "resume") {
 async function injectFileIntoInput(input, file, fileType) {
   // Detect Ashby (used by Patreon, etc.)
   const isAshby = document.querySelector('.ashby-application-form-autofill-uploader') ||
-                  document.querySelector('[class*="ashby-application"]') ||
-                  document.querySelector('div[class*="_autofillPane"]');
+                   document.querySelector('[class*="ashby-application"]') ||
+                   document.querySelector('div[class*="_autofillPane"]');
   
   // Detect Rippling
   const isRippling = window.location.hostname.includes('rippling.com') || 
@@ -738,6 +961,18 @@ async function injectFileIntoInput(input, file, fileType) {
   
   // Detect LinkedIn Easy Apply
   const isLinkedIn = window.location.hostname.includes('linkedin.com');
+  
+  // Detect Workday
+  const isWorkday = window.location.hostname.includes('myworkdayjobs.com') ||
+                    window.location.hostname.includes('wd5.myworkdayjobs.com') ||
+                    input.getAttribute('data-automation-id') === 'file-upload-input-ref' ||
+                    input.getAttribute('data-automation-id')?.includes('file-upload');
+  
+  if (isWorkday) {
+    console.log(`⏰ Workday detected! Input has data-automation-id: ${input.getAttribute('data-automation-id')}`);
+    console.log(`⏰ Input element:`, input);
+    console.log(`⏰ Input visibility: display=${input.style.display}, visibility=${input.style.visibility}, opacity=${input.style.opacity}`);
+  }
   
   // For Ashby: Use page context injection to properly trigger React handlers
   if (isAshby) {
@@ -748,6 +983,17 @@ async function injectFileIntoInput(input, file, fileType) {
       return true;
     }
     console.log("⚠️ Ashby page context upload completed, continuing...");
+  }
+  
+  // For Workday: Use page context injection to properly trigger React handlers
+  if (isWorkday) {
+    console.log("⏰ Workday detected, using page context injection...");
+    const workdaySuccess = await uploadViaWorkdayContext(file, fileType);
+    if (workdaySuccess) {
+      console.log("✅ Workday upload successful via page context");
+      return true;
+    }
+    console.log("⚠️ Workday page context upload completed, continuing...");
   }
   
   // For Rippling: Use React-compatible file injection
@@ -1014,13 +1260,109 @@ async function injectFileIntoInput(input, file, fileType) {
     }
   }
   
-  if (!input.files || input.files.length === 0) {
-    return false;
-  }
-  
-  // Dispatch change and input events
-  input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-  input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+   if (!input.files || input.files.length === 0) {
+     if (isWorkday) {
+       console.error(`⏰ WORKDAY PROBLEM: Files NOT set! input.files.length=${input.files?.length || 0}`);
+     }
+     return false;
+   }
+   
+    if (isWorkday) {
+      console.log(`⏰ FILES SET SUCCESSFULLY: input.files.length=${input.files.length}`, input.files[0].name);
+    }
+   
+   // Dispatch change and input events
+   if (isWorkday) {
+     console.log(`⏰ Dispatching standard DOM events...`);
+   }
+   
+   input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+   input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+   
+    // WORKDAY-SPECIFIC: Try to trigger React onChange handler directly
+    if (isWorkday) {
+      console.log(`⏰ Attempting Workday React fiber detection...`);
+      
+      // Find React fiber key on input
+      // Note: React keys might be non-enumerable, so check both Object.keys and direct properties
+      let reactKey = Object.keys(input).find(key => 
+        key.startsWith('__reactFiber') || 
+        key.startsWith('__reactInternalInstance') ||
+        key.startsWith('__reactProps')
+      );
+      
+      // If not found in enumerable keys, try to find it directly
+      if (!reactKey) {
+        console.log(`⏰ React key not in enumerable properties, checking for hashed keys...`);
+        // Check for keys that look like __reactFiber$ with a hash
+        const allProps = [];
+        for (let prop in input) {
+          allProps.push(prop);
+        }
+        // Also check non-enumerable properties
+        const propNames = Object.getOwnPropertyNames(input);
+        for (const prop of propNames) {
+          if (prop.startsWith('__reactFiber') || prop.startsWith('__reactInternalInstance') || prop.startsWith('__reactProps')) {
+            reactKey = prop;
+            console.log(`⏰ Found React key via getOwnPropertyNames: ${reactKey}`);
+            break;
+          }
+        }
+      }
+      
+      if (reactKey) {
+        console.log(`⏰ Found React key: ${reactKey}`);
+        console.log(`⏰ React fiber object:`, input[reactKey]);
+        
+        try {
+          let fiber = input[reactKey];
+          let foundHandler = false;
+          let lastFiber = null;
+          
+          // Walk up the fiber tree looking for onChange handler
+          for (let depth = 0; fiber && depth < 30; depth++) {
+            lastFiber = fiber;
+            const props = fiber.memoizedProps || fiber.pendingProps || fiber.stateNode?.props;
+            
+            if (depth === 0) {
+              console.log(`⏰ Fiber depth 0 - type: ${fiber.type?.name || fiber.type || 'unknown'}, has memoizedProps: ${!!fiber.memoizedProps}, has pendingProps: ${!!fiber.pendingProps}`);
+            }
+            
+            if (props?.onChange) {
+              console.log(`⏰ Found onChange handler at depth ${depth}`);
+              
+              // Call the onChange handler with a synthetic event
+              const syntheticEvent = {
+                target: input,
+                currentTarget: input,
+                type: 'change',
+                bubbles: true,
+                cancelable: true,
+                preventDefault: () => {},
+                stopPropagation: () => {},
+                nativeEvent: new Event('change', { bubbles: true })
+              };
+              
+              props.onChange(syntheticEvent);
+              console.log(`⏰ Called onChange handler successfully`);
+              foundHandler = true;
+              break;
+            }
+            
+            fiber = fiber.return;
+          }
+          
+          if (!foundHandler) {
+            console.log(`⏰ No onChange handler found in fiber tree (checked ${lastFiber ? 'full depth' : '0'} nodes)`);
+            console.log(`⏰ Last fiber visited:`, lastFiber);
+          }
+        } catch (e) {
+          console.error(`⏰ Error calling React onChange:`, e.message);
+        }
+      } else {
+        console.log(`⏰ No React fiber key found on input (checked ${Object.getOwnPropertyNames(input).length} properties)`);
+      }
+    }
   
   // Firefox: Additional event dispatching for better React compatibility
   if (isFirefox) {
@@ -1380,52 +1722,85 @@ async function injectFileIntoInput(input, file, fileType) {
     }
   }
 
-  // For Workday: trigger events on the container and related elements
-  const container = input.closest('[data-automation-id="resumeUpload"]');
-  if (container) {
-    const containerEvents = ['change', 'input', 'fileSelected'];
-    for (const eventName of containerEvents) {
-      try {
-        const event = new Event(eventName, { bubbles: true, cancelable: true });
-        container.dispatchEvent(event);
-      } catch (e) {
-      }
-    }
-  }
+   // For Workday: trigger events on the container and related elements
+   const container = input.closest('[data-automation-id="resumeUpload"]');
+   if (container) {
+     if (isWorkday) {
+       console.log(`⏰ Found Workday resumeUpload container, triggering events...`);
+     }
+     const containerEvents = ['change', 'input', 'fileSelected'];
+     for (const eventName of containerEvents) {
+       try {
+         const event = new Event(eventName, { bubbles: true, cancelable: true });
+         container.dispatchEvent(event);
+       } catch (e) {
+       }
+     }
+   }
 
-  // For Workday: try to trigger validation/update events
-  const customEvents = ['fileSelected', 'fileChange', 'upload', 'drop', 'filesSelected'];
-  for (const eventName of customEvents) {
-    try {
-      const customEvent = new Event(eventName, { bubbles: true, cancelable: true });
-      input.dispatchEvent(customEvent);
-      
-      // Also try on container
-      if (container) {
-        container.dispatchEvent(customEvent);
-      }
-    } catch (e) {
-      // Ignore if event doesn't work
-    }
-  }
+   // For Workday: try to trigger validation/update events
+   const customEvents = ['fileSelected', 'fileChange', 'upload', 'drop', 'filesSelected'];
+   if (isWorkday) {
+     console.log(`⏰ Attempting to trigger custom Workday events: ${customEvents.join(', ')}`);
+   }
+   
+   for (const eventName of customEvents) {
+     try {
+       const customEvent = new Event(eventName, { bubbles: true, cancelable: true });
+       input.dispatchEvent(customEvent);
+       
+       // Also try on container
+       if (container) {
+         container.dispatchEvent(customEvent);
+       }
+     } catch (e) {
+       // Ignore if event doesn't work
+     }
+   }
 
-  // Workday might listen to events on the drop zone
-  const dropZone = document.querySelector('[data-automation-id="file-upload-drop-zone"]');
-  if (dropZone) {
-    try {
-      // Create a DataTransfer object for the drop event
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      
-      const dropEvent = new DragEvent('drop', {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer: dt
-      });
-      dropZone.dispatchEvent(dropEvent);
-    } catch (e) {
-    }
-  }
+   // Workday might listen to events on the drop zone
+   const dropZone = document.querySelector('[data-automation-id="file-upload-drop-zone"]');
+   if (dropZone) {
+     if (isWorkday) {
+       console.log(`⏰ Found Workday drop zone, triggering drop event...`);
+     }
+     try {
+       // Create a DataTransfer object for the drop event
+       const dt = new DataTransfer();
+       dt.items.add(file);
+       
+       const dropEvent = new DragEvent('drop', {
+         bubbles: true,
+         cancelable: true,
+         dataTransfer: dt
+       });
+       dropZone.dispatchEvent(dropEvent);
+     } catch (e) {
+       if (isWorkday) {
+         console.error(`⏰ Error triggering drop event:`, e.message);
+       }
+     }
+   }
+   
+   // Workday: Also try to find and trigger events on parent containers
+   if (isWorkday) {
+     console.log(`⏰ Searching for Workday parent containers...`);
+     
+     // Find closest div with specific Workday data attributes
+     const workdayParent = input.closest('[data-automation-id], [class*="file"]');
+     if (workdayParent && workdayParent !== container && workdayParent !== dropZone) {
+       console.log(`⏰ Found Workday parent container:`, workdayParent.getAttribute('data-automation-id') || workdayParent.className);
+       
+       // Trigger events on this parent
+       const events = ['change', 'input', 'fileSelected', 'upload'];
+       for (const evt of events) {
+         try {
+           const event = new Event(evt, { bubbles: true, cancelable: true });
+           workdayParent.dispatchEvent(event);
+         } catch (e) {}
+       }
+     }
+   }
 
   // Restore original styles
   input.style.display = originalStyles.display;
@@ -1599,13 +1974,20 @@ async function injectFileIntoInput(input, file, fileType) {
     }
   }
   
-  // Check if file was set successfully
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  if (input.files && input.files.length > 0) {
-    return true;
-  }
-  return false;
+   // Check if file was set successfully
+   await new Promise(resolve => setTimeout(resolve, 100));
+   
+   if (input.files && input.files.length > 0) {
+     if (isWorkday) {
+       console.log(`✅ WORKDAY SUCCESS: File injection complete, input.files.length=${input.files.length}`);
+     }
+     return true;
+   }
+   
+   if (isWorkday) {
+     console.error(`❌ WORKDAY FAILED: File was not retained after all events. input.files.length=${input.files?.length || 0}`);
+   }
+   return false;
 }
 
 // Floating UI removed - all functionality moved to extension popup

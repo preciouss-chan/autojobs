@@ -36,7 +36,7 @@
 
   "web_accessible_resources": [
     {
-      "resources": ["data/resume.json", "chatbot/chatbot.html", "script/greenhouse-inject.js", "script/ashby-inject.js", "shared/browser-polyfill.js", "popup/upload-resume.html"],
+      "resources": ["data/resume.json", "chatbot/chatbot.html", "script/greenhouse-inject.js", "script/ashby-inject.js", "script/workday-inject.js", "shared/browser-polyfill.js", "popup/upload-resume.html"],
       "matches": ["<all_urls>"]
     }
   ]

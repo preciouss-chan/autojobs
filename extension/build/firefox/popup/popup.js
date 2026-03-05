@@ -52,25 +52,7 @@ async function checkCachedResume() {
     statusEl.className = "status success";
     clearBtn.style.display = "block";
   }
-
-  // Check API key status
-  const apiKeySettings = await new Promise((resolve) => {
-    chrome.storage.sync.get(['openaiApiKey'], (result) => {
-      resolve(result);
-    });
-  });
-
-  if (!apiKeySettings.openaiApiKey) {
-    const generateBtn = document.getElementById("generate");
-    generateBtn.style.opacity = "0.6";
-    generateBtn.title = "OpenAI API key not set. Click Settings to configure.";
-  }
 })();
-
-// =============== OPEN SETTINGS ===============
-document.getElementById("openSettings").addEventListener("click", () => {
-  chrome.runtime.openOptionsPage();
-});
 
 // =============== OPEN CHATBOT ===============
 document.getElementById("openChatbot").addEventListener("click", async () => {
@@ -144,20 +126,6 @@ document.getElementById("clearResume").addEventListener("click", async () => {
 document.getElementById("generate").addEventListener("click", async () => {
   console.log("👉 Generate Resume clicked");
 
-  // Check if API key is set
-  const apiKeySettings = await new Promise((resolve) => {
-    chrome.storage.sync.get(['openaiApiKey'], (result) => {
-      resolve(result);
-    });
-  });
-  
-  if (!apiKeySettings.openaiApiKey) {
-    if (confirm("OpenAI API key not set. Would you like to open settings to configure it?")) {
-      chrome.runtime.openOptionsPage();
-    }
-    return;
-  }
-
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   // Inject scraper
@@ -200,13 +168,6 @@ document.getElementById("generate").addEventListener("click", async () => {
     return;
   }
 
-  // Get preferences
-  const preferences = await new Promise((resolve) => {
-    chrome.storage.sync.get(['showNotifications', 'confirmBeforeUpload'], (result) => {
-      resolve(result);
-    });
-  });
-
   // Show loading state
   const generateBtn = document.getElementById("generate");
   const originalText = generateBtn.textContent;
@@ -240,28 +201,18 @@ document.getElementById("generate").addEventListener("click", async () => {
       if (errorMsg.includes('<html>')) {
         // Extract meaningful text from HTML error
         const match = errorMsg.match(/<title>(.*?)<\/title>/i) || errorMsg.match(/<h1>(.*?)<\/h1>/i);
-        errorMsg = match ? match[1] : "Backend server error (403 Forbidden)";
+        errorMsg = match ? match[1] : "Backend server error";
       }
       errorMsg = errorMsg.substring(0, 200); // Limit length
       
-      if (preferences.showNotifications && errorMsg) {
-        try {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-            title: 'Resume Generation Failed',
-            message: errorMsg
-          }, (notificationId) => {
-            if (chrome.runtime.lastError) {
-              console.error("Notification error:", chrome.runtime.lastError);
-              alert("Resume generation failed: " + errorMsg);
-            }
-          });
-        } catch (notifErr) {
-          // Fallback to alert if notifications fail
-          alert("Resume generation failed: " + errorMsg);
-        }
-      } else {
+      try {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          title: 'Resume Generation Failed',
+          message: errorMsg
+        });
+      } catch (notifErr) {
         alert("Resume generation failed: " + errorMsg);
       }
       return;
@@ -269,18 +220,14 @@ document.getElementById("generate").addEventListener("click", async () => {
     
     const message = "Resume tailored and saved!";
     
-    if (preferences.showNotifications) {
-      try {
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-          title: 'Resume Generated',
-          message: message
-        });
-      } catch (notifErr) {
-        alert(message + " Now go to the apply page.");
-      }
-    } else {
+    try {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        title: 'Resume Generated',
+        message: message
+      });
+    } catch (notifErr) {
       alert(message + " Now go to the apply page.");
     }
   } catch (err) {
@@ -382,56 +329,31 @@ document.getElementById("previewCoverLetter").addEventListener("click", async ()
 document.getElementById("uploadResume").addEventListener("click", async () => {
   console.log("👉 Upload Resume clicked");
 
-  // Check if confirmation is required
-  const preferences = await new Promise((resolve) => {
-    chrome.storage.sync.get(['confirmBeforeUpload', 'showNotifications'], (result) => {
-      resolve(result);
-    });
-  });
-
-  if (preferences.confirmBeforeUpload) {
-    if (!confirm("Upload resume to the current page?")) {
-      return;
-    }
-  }
-
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   try {
     const resp = await sendRuntimeMessage({ action: "FORCE_UPLOAD", tabId: tab.id });
     if (resp?.error) {
       const errorMsg = String(resp.error || "Unknown error").substring(0, 200);
-      if (preferences.showNotifications && errorMsg) {
-        try {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-            title: 'Upload Failed',
-            message: errorMsg
-          }, (notificationId) => {
-            if (chrome.runtime.lastError) {
-              alert("Failed to upload resume: " + errorMsg);
-            }
-          });
-        } catch (notifErr) {
-          alert("Failed to upload resume: " + errorMsg);
-        }
-      } else {
+      try {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          title: 'Upload Failed',
+          message: errorMsg
+        });
+      } catch (notifErr) {
         alert("Failed to upload resume: " + errorMsg);
       }
     } else {
-      if (preferences.showNotifications) {
-        try {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-            title: 'Resume Uploaded',
-            message: 'Resume uploaded successfully!'
-          });
-        } catch (notifErr) {
-          alert("Resume uploaded successfully!");
-        }
-      } else {
+      try {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          title: 'Resume Uploaded',
+          message: 'Resume uploaded successfully!'
+        });
+      } catch (notifErr) {
         alert("Resume uploaded successfully!");
       }
     }
@@ -444,56 +366,31 @@ document.getElementById("uploadResume").addEventListener("click", async () => {
 document.getElementById("uploadCoverLetter").addEventListener("click", async () => {
   console.log("👉 Upload Cover Letter clicked");
 
-  // Check if confirmation is required
-  const preferences = await new Promise((resolve) => {
-    chrome.storage.sync.get(['confirmBeforeUpload', 'showNotifications'], (result) => {
-      resolve(result);
-    });
-  });
-
-  if (preferences.confirmBeforeUpload) {
-    if (!confirm("Upload cover letter to the current page?")) {
-      return;
-    }
-  }
-
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   try {
     const resp = await sendRuntimeMessage({ action: "FORCE_UPLOAD_COVER", tabId: tab.id });
     if (resp?.error) {
       const errorMsg = String(resp.error || "Unknown error").substring(0, 200);
-      if (preferences.showNotifications && errorMsg) {
-        try {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-            title: 'Upload Failed',
-            message: errorMsg
-          }, (notificationId) => {
-            if (chrome.runtime.lastError) {
-              alert("Failed to upload cover letter: " + errorMsg);
-            }
-          });
-        } catch (notifErr) {
-          alert("Failed to upload cover letter: " + errorMsg);
-        }
-      } else {
+      try {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          title: 'Upload Failed',
+          message: errorMsg
+        });
+      } catch (notifErr) {
         alert("Failed to upload cover letter: " + errorMsg);
       }
     } else {
-      if (preferences.showNotifications) {
-        try {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-            title: 'Cover Letter Uploaded',
-            message: 'Cover letter uploaded successfully!'
-          });
-        } catch (notifErr) {
-          alert("Cover letter uploaded successfully!");
-        }
-      } else {
+      try {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          title: 'Cover Letter Uploaded',
+          message: 'Cover letter uploaded successfully!'
+        });
+      } catch (notifErr) {
         alert("Cover letter uploaded successfully!");
       }
     }
@@ -541,20 +438,11 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     const formData = new FormData();
     formData.append("file", file);
 
-    // Get API key from settings
-    const apiKeySettings = await new Promise((resolve) => {
-      chrome.storage.sync.get(['openaiApiKey'], (result) => {
-        resolve(result);
-      });
-    });
-    const apiKey = apiKeySettings.openaiApiKey;
-
-    // Use backend URL (update in background.js when deploying)
+    // Use backend URL (update when deploying)
     const backendUrl = "http://localhost:3000"; // Update this to match your hosted backend
     
     const response = await fetch(`${backendUrl}/api/parse-resume`, {
       method: "POST",
-      headers: apiKey ? { "X-OpenAI-API-Key": apiKey } : {},
       body: formData
     });
 
@@ -618,4 +506,3 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     console.error("Resume upload error:", err);
   }
 });
-

@@ -75,8 +75,6 @@ export const authOptions = {
   },
 } as any;
 
-export const { signIn, signOut } = NextAuth(authOptions);
-
 // Wrapper function for NextAuth v4 - cast to any to avoid type issues
 export async function auth(): Promise<any> {
   return await getServerSession(authOptions as any);

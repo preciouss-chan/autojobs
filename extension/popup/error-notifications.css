@@ -1,0 +1,187 @@
+/* extension/popup/error-notifications.css */
+/* Styles for error handling UI components */
+
+/* Error Notification */
+.error-notification {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  background: #fee;
+  border: 1px solid #f66;
+  border-radius: 6px;
+  padding: 12px 16px;
+  max-width: 300px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  z-index: 10000;
+  animation: slideIn 0.3s ease-out;
+}
+
+.error-content {
+  color: #333;
+}
+
+.error-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.error-title {
+  font-weight: 600;
+  color: #d33;
+  font-size: 14px;
+}
+
+.error-close {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  margin: -4px -4px -4px 8px;
+  line-height: 1;
+}
+
+.error-close:hover {
+  color: #666;
+}
+
+.error-message {
+  margin: 0 0 8px 0;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.error-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.error-retry-btn {
+  background: #d33;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.error-retry-btn:hover {
+  background: #b22;
+}
+
+.error-retry-btn:active {
+  background: #933;
+}
+
+/* Success Notification */
+.success-notification {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  background: #efe;
+  border: 1px solid #6f6;
+  border-radius: 6px;
+  padding: 12px 16px;
+  max-width: 300px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  z-index: 10000;
+  animation: slideIn 0.3s ease-out;
+}
+
+.success-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #363;
+}
+
+.success-icon {
+  font-weight: bold;
+  color: #6f6;
+  font-size: 16px;
+}
+
+.success-notification p {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Loading Indicator */
+.loading-indicator {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 24px 32px;
+  border-radius: 8px;
+  text-align: center;
+  z-index: 10001;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.loading-indicator .spinner {
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 12px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-indicator p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(400px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Stack multiple notifications */
+.error-notification:nth-child(2),
+.success-notification:nth-child(2) {
+  top: 66px;
+}
+
+.error-notification:nth-child(3),
+.success-notification:nth-child(3) {
+  top: 120px;
+}

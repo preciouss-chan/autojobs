@@ -3,6 +3,10 @@ console.log("🔥 popup.js loaded");
 
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
+// Import timeout utilities
+import { fetchWithTimeout, fetchJSON, API_TIMEOUTS } from '../shared/api-utils.js';
+import { parseError, showErrorNotification, showSuccessNotification, withErrorHandling } from '../shared/error-handler.js';
+
 // Detect Firefox (popup closes on file picker)
 const isFirefox = typeof browser !== 'undefined' && browser.runtime && browser.runtime.getBrowserInfo;
 
@@ -24,13 +28,13 @@ async function checkSessionImmediate() {
       return false;
     }
 
-    const response = await fetch("http://localhost:3000/api/extension/validate", {
+    const response = await fetchWithTimeout("http://localhost:3000/api/extension/validate", {
       method: "GET",
       credentials: "include",
       headers: {
         "Content-Type": "application/json"
       }
-    });
+    }, API_TIMEOUTS.VALIDATION);
 
     if (!response.ok) {
       return false;
@@ -160,13 +164,13 @@ async function signOutEverywhere() {
   // We make a POST request to /api/auth/logout-everywhere which will clear the NextAuth cookie
   try {
     console.log("📤 Calling dashboard logout endpoint");
-    const response = await fetch("http://localhost:3000/api/auth/logout-everywhere", {
+    const response = await fetchWithTimeout("http://localhost:3000/api/auth/logout-everywhere", {
       method: "POST",
       credentials: "include", // IMPORTANT: Include cookies so the session can be verified
       headers: {
         "Content-Type": "application/json"
       }
-    });
+    }, API_TIMEOUTS.LOGOUT);
     
     if (response.ok) {
       console.log("✅ Dashboard also logged out (cookie cleared on server)");
@@ -187,13 +191,13 @@ async function refreshCreditsDisplay() {
       return;
     }
 
-    const response = await fetch(`${API_BASE_URL}/credits/balance`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/credits/balance`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"
       }
-    });
+    }, API_TIMEOUTS.CREDITS);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch credits: ${response.statusText}`);
@@ -208,6 +212,9 @@ async function refreshCreditsDisplay() {
     return data.balance;
   } catch (err) {
     console.error("Failed to refresh credits:", err);
+    // Show error but don't prevent UI from loading
+    const errorInfo = parseError(err, "Credits Check");
+    console.warn(`⚠️ ${errorInfo.displayMessage}`);
     document.getElementById("creditDisplay").style.display = "none";
     return 0;
   }
@@ -273,13 +280,13 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
       
       try {
         // Try to fetch the extension token - if it succeeds, user is logged in
-        const tokenResponse = await fetch("http://localhost:3000/api/extension/token", {
+        const tokenResponse = await fetchWithTimeout("http://localhost:3000/api/extension/token", {
           method: "GET",
           credentials: "include", // Include cookies from the signin
           headers: {
             "Content-Type": "application/json"
           }
-        });
+        }, API_TIMEOUTS.TOKEN);
 
         if (tokenResponse.ok) {
           const data = await tokenResponse.json();
@@ -374,13 +381,13 @@ async function startSessionPoller() {
 
       // Check if server session still valid
       // IMPORTANT: credentials: "include" tells browser to send cookies even for cross-origin requests
-      const response = await fetch("http://localhost:3000/api/extension/validate", {
+      const response = await fetchWithTimeout("http://localhost:3000/api/extension/validate", {
         method: "GET",
         credentials: "include", // Send cookies so server can check session
         headers: {
           "Content-Type": "application/json"
         }
-      });
+      }, API_TIMEOUTS.VALIDATION);
 
       if (!response.ok) {
         console.log("❌ Validation request failed");
@@ -440,13 +447,13 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
     // Then try to fetch a fresh token from the backend in case the user just logged in on the dashboard
     try {
       console.log("🔄 Checking for dashboard login...");
-      const tokenResponse = await fetch("http://localhost:3000/api/extension/token", {
+      const tokenResponse = await fetchWithTimeout("http://localhost:3000/api/extension/token", {
         method: "GET",
         credentials: "include", // Include cookies from dashboard login
         headers: {
           "Content-Type": "application/json"
         }
-      });
+      }, API_TIMEOUTS.TOKEN);
 
       if (tokenResponse.ok) {
         const data = await tokenResponse.json();
@@ -754,11 +761,11 @@ document.getElementById("previewCoverLetter").addEventListener("click", async ()
       const backendUrl = "http://localhost:3000"; // Update this to match your hosted backend
       
       // Convert to PDF using backend
-      const response = await fetch(`${backendUrl}/api/export/cover-letter`, {
+      const response = await fetchWithTimeout(`${backendUrl}/api/export/cover-letter`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: coverLetterText })
-      });
+      }, API_TIMEOUTS.EXPORT);
 
       if (!response.ok) {
         throw new Error("Failed to convert cover letter to PDF");
@@ -778,7 +785,8 @@ document.getElementById("previewCoverLetter").addEventListener("click", async ()
         statusEl.style.display = "none";
       }, 2000);
     } catch (err) {
-      statusEl.textContent = `Error: ${err.message}`;
+      const errorInfo = parseError(err, "Cover Letter Export");
+      statusEl.textContent = `Error: ${errorInfo.message}`;
       statusEl.className = "status error";
       console.error("Cover letter preview error:", err);
     }
@@ -903,10 +911,10 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     // Use backend URL (update when deploying)
     const backendUrl = "http://localhost:3000"; // Update this to match your hosted backend
     
-    const response = await fetch(`${backendUrl}/api/parse-resume`, {
+    const response = await fetchWithTimeout(`${backendUrl}/api/parse-resume`, {
       method: "POST",
       body: formData
-    });
+    }, API_TIMEOUTS.PARSE);
 
     // Check content type to ensure we got JSON, not HTML
     const contentType = response.headers.get("content-type");
@@ -954,12 +962,13 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
       statusEl.className = "status error";
     }
   } catch (err) {
-    let errorMessage = err.message || "Unknown error occurred";
+    const errorInfo = parseError(err, "Resume Parsing");
+    let errorMessage = errorInfo.message;
     
     // Provide more helpful error messages
-    if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
+    if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
       errorMessage = "Cannot connect to server. Make sure the Next.js server is running on http://localhost:3000";
-    } else if (errorMessage.includes("non-JSON response")) {
+    } else if (err.message.includes("non-JSON response")) {
       errorMessage = "Server error. Check that the server is running and the /api/parse-resume endpoint exists.";
     }
     

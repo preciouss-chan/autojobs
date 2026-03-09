@@ -1,6 +1,8 @@
 // extension/shared/auth.js
 // Authentication helper for extension
 
+import { fetchWithTimeout, API_TIMEOUTS } from './api-utils.js';
+
 const API_BASE_URL = "http://localhost:3000/api";
 const STORAGE_KEYS = {
   AUTH_TOKEN: "auth_token",
@@ -113,13 +115,13 @@ export async function getCreditsBalance() {
     throw new Error("Not authenticated");
   }
 
-  const response = await fetch(`${API_BASE_URL}/credits/balance`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/credits/balance`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     }
-  });
+  }, API_TIMEOUTS.CREDITS);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch credits: ${response.statusText}`);
@@ -138,14 +140,14 @@ export async function deductCredits(amount = 1) {
     throw new Error("Not authenticated");
   }
 
-  const response = await fetch(`${API_BASE_URL}/credits/deduct`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/credits/deduct`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ amount })
-  });
+  }, API_TIMEOUTS.CREDITS);
 
   if (!response.ok) {
     const error = await response.json();

@@ -26,20 +26,77 @@ export const authOptions = {
     }),
   ],
   session: {
-    strategy: "database" as const,
+    strategy: "jwt" as const,
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
+  jwt: {
+    secret: process.env.AUTH_SECRET || "",
+  },
   callbacks: {
-    async session({ session, user }: any) {
-      if (session.user && user) {
-        session.user.id = user.id;
+    async jwt({ token, user }: any) {
+      console.log("🔐 [JWT CALLBACK] token at start:", token);
+      console.log("🔐 [JWT CALLBACK] user:", user);
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
       }
+      console.log("🔐 [JWT CALLBACK] token at end:", token);
+      return token;
+    },
+    async session({ session, token }: any) {
+      console.log("🔐 [SESSION CALLBACK] session:", session);
+      console.log("🔐 [SESSION CALLBACK] token:", token);
+      if (session.user && token) {
+        session.user.id = token.id;
+      }
+      console.log("🔐 [SESSION CALLBACK] returning:", session);
       return session;
+    },
+    async signIn({ user, account, profile }: any) {
+      console.log("🔐 [SIGNIN CALLBACK] user:", user);
+      return true;
     },
   },
   pages: {
-    signIn: "/auth/signin",
+    // signIn: "/auth/signin",
     error: "/auth/error",
+  },
+  cookies: {
+    sessionToken: {
+      name: "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: false, // Set to false for localhost HTTP
+      },
+    },
+    callbackUrl: {
+      name: "next-auth.callback-url",
+      options: {
+        sameSite: "lax",
+        path: "/",
+        secure: false,
+      },
+    },
+    csrfToken: {
+      name: "next-auth.csrf-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: false,
+      },
+    },
+    pkceCodeVerifier: {
+      name: "next-auth.pkce.code_verifier",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: false,
+      },
+    },
   },
   events: {
     async signIn({ user }: any) {

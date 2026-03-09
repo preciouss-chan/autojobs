@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
-export default function Dashboard() {
+function DashboardContent() {
   const { data: session, status } = useSession();
   const searchParams = useSearchParams();
   const [credits, setCredits] = useState<number | null>(null);
@@ -201,15 +202,32 @@ export default function Dashboard() {
         {/* Info Section */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mt-8">
           <h3 className="text-lg font-bold text-blue-900 mb-2">How AutoJobs Works</h3>
-          <ul className="space-y-2 text-blue-800 text-sm">
-            <li>✓ Each application uses 1 credit</li>
-            <li>✓ Your resume is automatically tailored for each job</li>
-            <li>✓ A cover letter can be generated if needed</li>
-            <li>✓ Credits expire 1 year after purchase</li>
-            <li>✓ Your free starter credit never expires</li>
-          </ul>
+           <ul className="space-y-2 text-blue-800 text-sm">
+             <li>✓ Each application uses 1 credit</li>
+             <li>✓ Your resume is automatically tailored for each job</li>
+             <li>✓ A cover letter can be generated if needed</li>
+             <li>✓ Credits expire 1 year after purchase</li>
+             <li>✓ Your free starter credit never expires</li>
+           </ul>
+         </div>
+       </main>
+     </div>
+   );
+}
+
+export default function Dashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading...</p>
+          </div>
         </div>
-      </main>
-    </div>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
   );
 }

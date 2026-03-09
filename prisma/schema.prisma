@@ -1,0 +1,111 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User account model
+model User {
+  id                String @id @default(cuid())
+  email             String @unique
+  emailVerified     DateTime?
+  name              String?
+  image             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  accounts          Account[]
+  sessions          Session[]
+  credits           Credits?
+  transactions      Transaction[]
+}
+
+// NextAuth required models for PrismaAdapter
+model Account {
+  id                String @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id                String @id @default(cuid())
+  sessionToken      String @unique
+  userId            String
+  expires           DateTime
+  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier        String
+  token             String @unique
+  expires           DateTime
+
+  @@unique([identifier, token])
+}
+
+// Credit balance per user
+model Credits {
+  id                String @id @default(cuid())
+  userId            String @unique
+  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance           Int @default(1)  // Start with 1 free app
+  totalPurchased    Int @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  lastDeductedAt    DateTime?
+  
+  @@index([userId])
+}
+
+// All credit transactions (history)
+model Transaction {
+  id                String @id @default(cuid())
+  userId            String
+  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String  // "grant", "purchase", "deduction", "refund"
+  amount            Int  // +/- credits
+  reason            String  // "free_trial", "job_application", "stripe_purchase_100", etc
+  stripePaymentId   String?  // Link to Stripe payment if applicable
+  expiresAt         DateTime?  // When credits expire (1 year from purchase)
+  createdAt         DateTime @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Stripe payment records
+model StripePayment {
+  id                String @id @default(cuid())
+  stripeSessionId   String @unique
+  stripePaymentId   String @unique  // charge id
+  amount            Int  // $2.49 = 249 (cents)
+  credits           Int  // 100 apps
+  status            String @default("pending")  // "pending", "completed", "failed"
+  userId            String?  // Null until payment completed
+  email             String?
+  createdAt         DateTime @default(now())
+  completedAt       DateTime?
+  
+  @@index([stripeSessionId])
+  @@index([userId])
+}
+

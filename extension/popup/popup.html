@@ -231,12 +231,49 @@
         background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
         margin: 20px 0;
       }
+
+      #loginBtn:hover {
+        background: #5a67d8;
+      }
+
+      #logoutBtn:hover {
+        background: #dc2626;
+      }
+
+      .auth-message {
+        padding: 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        margin-top: 12px;
+        text-align: center;
+      }
+
+      .auth-message.warning {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+      }
+
+      .auth-message.error {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #ef4444;
+      }
     </style>
   </head>
 
   <body>
     <div class="header">
-    <h2>Auto Apply AI</h2>
+      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <h2 style="margin: 0;">Auto Apply AI</h2>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span id="creditDisplay" style="font-size: 12px; font-weight: 600; color: #667eea; display: none;">
+            Credits: <span id="creditCount">-</span>
+          </span>
+          <button id="loginBtn" style="padding: 6px 12px; font-size: 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Login</button>
+          <button id="logoutBtn" style="padding: 6px 12px; font-size: 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Logout</button>
+        </div>
+      </div>
     </div>
 
     <div class="content">

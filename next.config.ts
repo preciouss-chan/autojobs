@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Use webpack instead of Turbopack for better compatibility with pdf-parse
-  // You can also run with: npm run dev -- --webpack
+  // Webpack config for pdf-parse and canvas
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Externalize pdf-parse and canvas for server-side only
@@ -14,9 +13,10 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
-  // Add empty turbopack config to silence the warning, or use webpack flag
+
+  // Keep Turbopack empty to avoid conflicts
   turbopack: {},
-  
+
   // CORS headers for Chrome extension
   async headers() {
     return [

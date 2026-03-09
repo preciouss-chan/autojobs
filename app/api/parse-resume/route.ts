@@ -34,19 +34,31 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    // Read PDF file as buffer
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+     // Read PDF file as buffer
+     const arrayBuffer = await file.arrayBuffer();
+     const buffer = Buffer.from(arrayBuffer);
+     const uint8Array = new Uint8Array(buffer);
 
-    // Use require for pdf-parse (works better in Next.js API routes)
-    // pdf-parse v2.4+ uses ES modules but we can use require with the PDFParse class
-    const pdfParseModule = require("pdf-parse");
-    const PDFParse = pdfParseModule.PDFParse || pdfParseModule;
-    
-    // Create instance and get text
-    const pdfParser = new PDFParse({ data: buffer });
-    const pdfData = await pdfParser.getText();
-    const extractedText = pdfData.text;
+     // Use require for pdf-parse
+     const { PDFParse } = require("pdf-parse");
+     
+     // Parse PDF and extract text
+     let extractedText: string = "";
+     try {
+       const parser = new PDFParse(uint8Array);
+       await parser.load();
+       const result = await parser.getText();
+       extractedText = result.text || "";
+     } catch (pdfErr) {
+       console.error("PDF parsing failed:", pdfErr);
+       return NextResponse.json(
+         ErrorResponseSchema.parse({
+           error: "Could not extract text from PDF. Please ensure the PDF contains readable text.",
+           details: pdfErr instanceof Error ? pdfErr.message : String(pdfErr),
+         }),
+         { status: 400 }
+       );
+     }
 
     if (!extractedText || extractedText.trim().length === 0) {
       return NextResponse.json(

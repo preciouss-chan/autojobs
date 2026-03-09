@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "description": "AI-powered resume tailoring and cover letter management for job applications.",
 
-  "permissions": ["activeTab", "scripting", "notifications"],
+  "permissions": ["activeTab", "scripting", "notifications", "storage"],
   "host_permissions": ["https://*/*", "http://*/*"],
 
   "action": {

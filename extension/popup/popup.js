@@ -6,6 +6,246 @@ const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 // Detect Firefox (popup closes on file picker)
 const isFirefox = typeof browser !== 'undefined' && browser.runtime && browser.runtime.getBrowserInfo;
 
+// =============== AUTHENTICATION ===============
+const API_BASE_URL = "http://localhost:3000/api";
+const STORAGE_KEYS = {
+  AUTH_TOKEN: "auth_token",
+  USER_EMAIL: "user_email",
+  CREDITS: "user_credits"
+};
+
+async function getAuthToken() {
+  return new Promise((resolve) => {
+    try {
+      browserAPI.storage.sync.get([STORAGE_KEYS.AUTH_TOKEN], (result) => {
+        resolve(result?.[STORAGE_KEYS.AUTH_TOKEN] || null);
+      });
+    } catch (err) {
+      console.error("Error getting auth token:", err);
+      resolve(null);
+    }
+  });
+}
+
+async function getUserEmail() {
+  return new Promise((resolve) => {
+    try {
+      browserAPI.storage.sync.get([STORAGE_KEYS.USER_EMAIL], (result) => {
+        resolve(result?.[STORAGE_KEYS.USER_EMAIL] || null);
+      });
+    } catch (err) {
+      console.error("Error getting user email:", err);
+      resolve(null);
+    }
+  });
+}
+
+async function storeAuthToken(token, email) {
+  return new Promise((resolve) => {
+    try {
+      browserAPI.storage.sync.set(
+        {
+          [STORAGE_KEYS.AUTH_TOKEN]: token,
+          [STORAGE_KEYS.USER_EMAIL]: email
+        },
+        resolve
+      );
+    } catch (err) {
+      console.error("Error storing auth token:", err);
+      resolve();
+    }
+  });
+}
+
+async function logout() {
+  return new Promise((resolve) => {
+    try {
+      browserAPI.storage.sync.remove(
+        [STORAGE_KEYS.AUTH_TOKEN, STORAGE_KEYS.USER_EMAIL],
+        resolve
+      );
+    } catch (err) {
+      console.error("Error logging out:", err);
+      resolve();
+    }
+  });
+}
+
+async function refreshCreditsDisplay() {
+  try {
+    const token = await getAuthToken();
+    if (!token) {
+      document.getElementById("creditDisplay").style.display = "none";
+      return;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/credits/balance`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch credits: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const creditCount = document.getElementById("creditCount");
+    if (creditCount) {
+      creditCount.textContent = data.balance;
+    }
+    document.getElementById("creditDisplay").style.display = "inline";
+    return data.balance;
+  } catch (err) {
+    console.error("Failed to refresh credits:", err);
+    document.getElementById("creditDisplay").style.display = "none";
+    return 0;
+  }
+}
+
+async function updateAuthUI() {
+  try {
+    const token = await getAuthToken();
+    const email = await getUserEmail();
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const creditDisplay = document.getElementById("creditDisplay");
+
+    if (!loginBtn || !logoutBtn || !creditDisplay) {
+      console.warn("Auth UI elements not found");
+      return;
+    }
+
+    if (token) {
+      loginBtn.style.display = "none";
+      logoutBtn.style.display = "inline-block";
+      await refreshCreditsDisplay();
+    } else {
+      loginBtn.style.display = "inline-block";
+      logoutBtn.style.display = "none";
+      creditDisplay.style.display = "none";
+    }
+  } catch (err) {
+    console.error("Error updating auth UI:", err);
+  }
+}
+
+// Handle login button click
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const loginBtn = document.getElementById("loginBtn");
+  loginBtn.disabled = true;
+  loginBtn.textContent = "Opening login...";
+
+  try {
+    const width = 500;
+    const height = 600;
+    const left = Math.round(screen.width / 2 - width / 2);
+    const top = Math.round(screen.height / 2 - height / 2);
+
+    const windowFeatures = `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+    // Open the signin page with a callback to the dashboard
+    const authWindow = window.open(
+      "http://localhost:3000/auth/signin?callbackUrl=http://localhost:3000/dashboard",
+      "AutoJobsAuth",
+      windowFeatures
+    );
+
+    if (!authWindow) {
+      throw new Error("Failed to open login window. Check popup blocker.");
+    }
+
+    console.log("🔓 Opening login window, polling for completion...");
+
+    // Poll to check if auth is complete
+    let checkCount = 0;
+    const checkInterval = setInterval(async () => {
+      checkCount++;
+      
+      try {
+        // Try to fetch the extension token - if it succeeds, user is logged in
+        const tokenResponse = await fetch("http://localhost:3000/api/extension/token", {
+          method: "GET",
+          credentials: "include", // Include cookies from the signin
+          headers: {
+            "Content-Type": "application/json"
+          }
+        });
+
+        if (tokenResponse.ok) {
+          const data = await tokenResponse.json();
+          console.log("✅ Token fetch successful! User is logged in.");
+          clearInterval(checkInterval);
+          
+          // Close the auth window after a short delay
+          setTimeout(() => {
+            if (authWindow && !authWindow.closed) {
+              authWindow.close();
+            }
+          }, 500);
+          
+          // Store the token
+          await storeAuthToken(data.token, data.email);
+          await updateAuthUI();
+          loginBtn.disabled = false;
+          loginBtn.textContent = "Login";
+          console.log("✅ Login successful:", data.email);
+        }
+      } catch (err) {
+        // Still waiting for login, continue polling
+        if (checkCount % 10 === 0) {
+          console.log(`⏳ Still waiting for login... (${checkCount}s)`);
+        }
+      }
+
+      // Check if window was closed manually
+      if (authWindow && authWindow.closed) {
+        console.log("🔗 Auth window closed by user");
+        clearInterval(checkInterval);
+      }
+
+      // Timeout after 5 minutes
+      if (checkCount > 300) { // 300 * 1 second = 5 minutes
+        console.log("❌ Login timeout");
+        clearInterval(checkInterval);
+        if (authWindow && !authWindow.closed) {
+          authWindow.close();
+        }
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Login";
+        alert("Login timeout. Please try again.");
+      }
+    }, 1000); // Check every second
+
+  } catch (err) {
+    console.error("Login error:", err);
+    alert(`Login failed: ${err.message}`);
+    loginBtn.disabled = false;
+    loginBtn.textContent = "Login";
+  }
+});
+
+// Handle logout button click
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  await logout();
+  await updateAuthUI();
+  console.log("✅ Logged out");
+});
+
+// Initialize auth UI on popup open
+(async () => {
+  try {
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+      await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
+    }
+    await updateAuthUI();
+  } catch (err) {
+    console.error("Error initializing auth UI:", err);
+  }
+})();
+
 function sendRuntimeMessage(message) {
   try {
     const result = browserAPI.runtime.sendMessage(message);
@@ -30,7 +270,7 @@ function sendRuntimeMessage(message) {
 // =============== CHECK FOR CACHED RESUME ON LOAD ===============
 async function checkCachedResume() {
   return new Promise((resolve) => {
-    chrome.storage.local.get(["uploadedResume", "uploadedResumeFilename"], (result) => {
+    browserAPI.storage.local.get(["uploadedResume", "uploadedResumeFilename"], (result) => {
       resolve({
         hasResume: !!result.uploadedResume,
         filename: result.uploadedResumeFilename || null,
@@ -57,17 +297,17 @@ async function checkCachedResume() {
 // =============== OPEN CHATBOT ===============
 document.getElementById("openChatbot").addEventListener("click", async () => {
   // Get current tab to extract job description
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
   
   // Try to get job description from storage or scrape it
   let jobDescription = "";
-  const stored = await chrome.storage.local.get(['lastJobDescription']);
+  const stored = await browserAPI.storage.local.get(['lastJobDescription']);
   if (stored.lastJobDescription) {
     jobDescription = stored.lastJobDescription;
   } else {
     // Try to scrape it
     try {
-      await chrome.scripting.executeScript({
+      await browserAPI.scripting.executeScript({
         target: { tabId: tab.id },
         func: () => {
           window.__SCRAPE_JOB__ = () => {
@@ -89,14 +329,14 @@ document.getElementById("openChatbot").addEventListener("click", async () => {
         },
       });
       
-      const [res] = await chrome.scripting.executeScript({
+      const [res] = await browserAPI.scripting.executeScript({
         target: { tabId: tab.id },
         func: () => window.__SCRAPE_JOB__?.()
       });
       jobDescription = res?.result || "";
       
       if (jobDescription && jobDescription.length >= 50) {
-        chrome.storage.local.set({ lastJobDescription: jobDescription });
+        browserAPI.storage.local.set({ lastJobDescription: jobDescription });
       }
     } catch (e) {
       console.warn("Could not scrape job description:", e);
@@ -104,14 +344,14 @@ document.getElementById("openChatbot").addEventListener("click", async () => {
   }
   
   // Open chatbot page with job description as URL param
-  const chatbotUrl = chrome.runtime.getURL('chatbot/chatbot.html') + 
+  const chatbotUrl = browserAPI.runtime.getURL('chatbot/chatbot.html') + 
     (jobDescription ? `?jobDescription=${encodeURIComponent(jobDescription)}` : '');
-  chrome.tabs.create({ url: chatbotUrl });
+  browserAPI.tabs.create({ url: chatbotUrl });
 });
 
 // =============== CLEAR CACHED RESUME ===============
 document.getElementById("clearResume").addEventListener("click", async () => {
-  chrome.storage.local.remove(["uploadedResume", "uploadedResumeFilename"], () => {
+  browserAPI.storage.local.remove(["uploadedResume", "uploadedResumeFilename"], () => {
     const statusEl = document.getElementById("resumeStatus");
     const clearBtn = document.getElementById("clearResume");
     statusEl.style.display = "none";
@@ -126,10 +366,10 @@ document.getElementById("clearResume").addEventListener("click", async () => {
 document.getElementById("generate").addEventListener("click", async () => {
   console.log("👉 Generate Resume clicked");
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
 
   // Inject scraper
-  await chrome.scripting.executeScript({
+  await browserAPI.scripting.executeScript({
     target: { tabId: tab.id },
     func: () => {
       window.__SCRAPE_JOB__ = () => {
@@ -152,7 +392,7 @@ document.getElementById("generate").addEventListener("click", async () => {
   });
 
   // Run scraper
-  const [res] = await chrome.scripting.executeScript({
+  const [res] = await browserAPI.scripting.executeScript({
     target: { tabId: tab.id },
     func: () => window.__SCRAPE_JOB__?.()
   });
@@ -160,7 +400,7 @@ document.getElementById("generate").addEventListener("click", async () => {
 
   // Store job description for chatbot
   if (jobDescription && jobDescription.length >= 50) {
-    chrome.storage.local.set({ lastJobDescription: jobDescription });
+    browserAPI.storage.local.set({ lastJobDescription: jobDescription });
   }
 
   if (!jobDescription || jobDescription.length < 50) {
@@ -206,7 +446,7 @@ document.getElementById("generate").addEventListener("click", async () => {
       errorMsg = errorMsg.substring(0, 200); // Limit length
       
       try {
-        chrome.notifications.create({
+        browserAPI.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
           title: 'Resume Generation Failed',
@@ -221,7 +461,7 @@ document.getElementById("generate").addEventListener("click", async () => {
     const message = "Resume tailored and saved!";
     
     try {
-      chrome.notifications.create({
+      browserAPI.notifications.create({
         type: 'basic',
         iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
         title: 'Resume Generated',
@@ -257,7 +497,7 @@ document.getElementById("previewResume").addEventListener("click", async () => {
     }
     const blob = new Blob([bytes], { type: "application/pdf" });
     const blobUrl = URL.createObjectURL(blob);
-    chrome.tabs.create({ url: blobUrl });
+    browserAPI.tabs.create({ url: blobUrl });
     // Revoke after a short delay to allow the tab to load
     setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
   } catch (err) {
@@ -306,7 +546,7 @@ document.getElementById("previewCoverLetter").addEventListener("click", async ()
       
       // Open using a blob URL (Firefox disallows long data: URLs)
       const blobUrl = URL.createObjectURL(blob);
-      chrome.tabs.create({ url: blobUrl });
+      browserAPI.tabs.create({ url: blobUrl });
       // Revoke after a short delay to allow the tab to load
       setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
       
@@ -329,14 +569,14 @@ document.getElementById("previewCoverLetter").addEventListener("click", async ()
 document.getElementById("uploadResume").addEventListener("click", async () => {
   console.log("👉 Upload Resume clicked");
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
 
   try {
     const resp = await sendRuntimeMessage({ action: "FORCE_UPLOAD", tabId: tab.id });
     if (resp?.error) {
       const errorMsg = String(resp.error || "Unknown error").substring(0, 200);
       try {
-        chrome.notifications.create({
+        browserAPI.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
           title: 'Upload Failed',
@@ -347,7 +587,7 @@ document.getElementById("uploadResume").addEventListener("click", async () => {
       }
     } else {
       try {
-        chrome.notifications.create({
+        browserAPI.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
           title: 'Resume Uploaded',
@@ -366,14 +606,14 @@ document.getElementById("uploadResume").addEventListener("click", async () => {
 document.getElementById("uploadCoverLetter").addEventListener("click", async () => {
   console.log("👉 Upload Cover Letter clicked");
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
 
   try {
     const resp = await sendRuntimeMessage({ action: "FORCE_UPLOAD_COVER", tabId: tab.id });
     if (resp?.error) {
       const errorMsg = String(resp.error || "Unknown error").substring(0, 200);
       try {
-        chrome.notifications.create({
+        browserAPI.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
           title: 'Upload Failed',
@@ -384,7 +624,7 @@ document.getElementById("uploadCoverLetter").addEventListener("click", async () 
       }
     } else {
       try {
-        chrome.notifications.create({
+        browserAPI.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
           title: 'Cover Letter Uploaded',
@@ -405,8 +645,8 @@ if (isFirefox) {
   document.getElementById("resumeFile").addEventListener("click", (e) => {
     e.preventDefault();
     // Open dedicated upload page in a small popup window
-    chrome.windows.create({
-      url: chrome.runtime.getURL('popup/upload-resume.html'),
+    browserAPI.windows.create({
+      url: browserAPI.runtime.getURL('popup/upload-resume.html'),
       type: 'popup',
       width: 500,
       height: 400,

@@ -7,6 +7,8 @@ import resumeData from "@/data/resume.json";
 import { useState } from "react";
 import type { JobRequirements } from "@/app/lib/schemas";
 
+export const dynamic = "force-dynamic";
+
 export default function TailorPage(): React.ReactElement {
   const { toasts, addToast, removeToast } = useToast();
   const [job, setJob] = useState("");

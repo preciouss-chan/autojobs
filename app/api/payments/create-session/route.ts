@@ -46,10 +46,14 @@ export async function POST(req: Request) {
 
     // Store payment record in database
     if (checkoutSession.id) {
+      // Generate a unique ID for stripe payment record
+      // Using sessionId as the primary key since we don't have payment_intent yet
+      const uniqueStripePaymentId = `pending_${checkoutSession.id}`;
+      
       await prisma.stripePayment.create({
         data: {
           stripeSessionId: checkoutSession.id,
-          stripePaymentId: "", // Will be filled by webhook
+          stripePaymentId: uniqueStripePaymentId,
           amount: 249,
           credits: 100,
           status: "pending",
@@ -71,3 +75,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

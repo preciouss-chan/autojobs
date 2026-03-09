@@ -3,14 +3,43 @@
 import { useState, useEffect } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
+  const searchParams = useSearchParams();
   const [credits, setCredits] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<"success" | "cancelled" | null>(null);
+  const [paymentMessage, setPaymentMessage] = useState("");
+
+  // Check for payment status from URL
+  useEffect(() => {
+    const status = searchParams.get("payment");
+    if (status === "success") {
+      setPaymentStatus("success");
+      setPaymentMessage("Payment successful! Your credits have been added.");
+      // Refresh credits after successful payment
+      setTimeout(() => {
+        fetchCredits();
+      }, 1000);
+      // Clear the URL parameter after 5 seconds
+      setTimeout(() => {
+        setPaymentStatus(null);
+        setPaymentMessage("");
+      }, 5000);
+    } else if (status === "cancelled") {
+      setPaymentStatus("cancelled");
+      setPaymentMessage("Payment was cancelled. No charges were made.");
+      setTimeout(() => {
+        setPaymentStatus(null);
+        setPaymentMessage("");
+      }, 5000);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -45,13 +74,16 @@ export default function Dashboard() {
         const data = await res.json();
         if (data.checkoutUrl) {
           window.location.href = data.checkoutUrl;
+        } else {
+          alert("Error: No checkout URL received from server");
         }
       } else {
-        alert("Failed to create checkout session");
+        const error = await res.json();
+        alert(`Failed to create checkout session: ${error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Error creating session:", error);
-      alert("Error creating checkout session");
+      alert("Error creating checkout session. Check console for details.");
     } finally {
       setPurchasing(false);
     }
@@ -102,6 +134,27 @@ export default function Dashboard() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Payment Status Alert */}
+        {paymentStatus && (
+          <div
+            className={`mb-6 p-4 rounded-lg ${
+              paymentStatus === "success"
+                ? "bg-green-50 border border-green-200"
+                : "bg-yellow-50 border border-yellow-200"
+            }`}
+          >
+            <p
+              className={`text-sm font-medium ${
+                paymentStatus === "success"
+                  ? "text-green-800"
+                  : "text-yellow-800"
+              }`}
+            >
+              {paymentMessage}
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Credits Card */}
           <div className="bg-white rounded-lg shadow-lg p-8">
@@ -114,10 +167,13 @@ export default function Dashboard() {
             <button
               onClick={handleBuyCredits}
               disabled={purchasing}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg"
+              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg transition"
             >
               {purchasing ? "Processing..." : "Buy 100 Credits for $2.49"}
             </button>
+            <p className="text-xs text-gray-500 mt-3">
+              Uses Stripe test mode. Card: 4242 4242 4242 4242
+            </p>
           </div>
 
           {/* Account Info */}
@@ -150,7 +206,7 @@ export default function Dashboard() {
             <li>✓ Your resume is automatically tailored for each job</li>
             <li>✓ A cover letter can be generated if needed</li>
             <li>✓ Credits expire 1 year after purchase</li>
-            <li>✓ Credits never expire if not yet purchased</li>
+            <li>✓ Your free starter credit never expires</li>
           </ul>
         </div>
       </main>

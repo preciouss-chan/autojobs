@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -16,6 +16,70 @@ function DashboardContent() {
   const [purchasing, setPurchasing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<"success" | "cancelled" | null>(null);
   const [paymentMessage, setPaymentMessage] = useState("");
+
+  /**
+   * Sync extension authentication token with dashboard
+   * This broadcasts the token to any extension windows listening
+   */
+  const syncExtensionToken = useCallback(async () => {
+    try {
+      const response = await fetch("/api/extension/token");
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Method 1: Try to send via extension runtime (most reliable)
+        try {
+          const chromeAPI = (window as any).chrome;
+          if (chromeAPI && chromeAPI.runtime) {
+            chromeAPI.runtime.sendMessage(
+              {
+                action: "SYNC_TOKEN_FROM_DASHBOARD",
+                token: data.token,
+                email: data.email,
+              },
+              (response: any) => {
+                if (chromeAPI.runtime.lastError) {
+                  console.log(
+                    "ℹ️  Extension not installed or not listening"
+                  );
+                } else {
+                  console.log("✅ Token sent to extension via runtime");
+                }
+              }
+            );
+          }
+        } catch (err) {
+          console.log("ℹ️  Could not send via chrome.runtime");
+        }
+
+        // Method 2: Broadcast via postMessage (fallback)
+        if (window.opener) {
+          window.opener.postMessage(
+            {
+              type: "EXTENSION_TOKEN_SYNC",
+              token: data.token,
+              email: data.email,
+              name: data.name,
+            },
+            "*"
+          );
+        }
+        window.postMessage(
+          {
+            type: "EXTENSION_TOKEN_SYNC",
+            token: data.token,
+            email: data.email,
+            name: data.name,
+          },
+          "*"
+        );
+        
+        console.log("✅ Extension token synced with dashboard");
+      }
+    } catch (error) {
+      console.error("Failed to sync extension token:", error);
+    }
+  }, []);
 
   // Check for payment status from URL
   useEffect(() => {
@@ -45,10 +109,47 @@ function DashboardContent() {
   useEffect(() => {
     if (status === "authenticated") {
       fetchCredits();
+      // Sync extension token after login
+      syncExtensionToken();
     } else if (status === "unauthenticated") {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, syncExtensionToken]);
+
+  // Listen for messages from extension
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.action === "EXTENSION_LOGOUT_REQUEST") {
+        console.log("📩 Extension requested logout from dashboard (via postMessage)");
+        signOut({ redirect: true, callbackUrl: "/auth/signin" });
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    // Also try to listen via chrome.runtime (if available)
+    try {
+      const chromeAPI = (window as any).chrome;
+      if (chromeAPI && chromeAPI.runtime && chromeAPI.runtime.onMessage) {
+        const runtimeListener = (msg: any, sender: any, sendResponse: any) => {
+          if (msg.action === "EXTENSION_LOGOUT_REQUEST") {
+            console.log("📩 Extension requested logout from dashboard (via runtime)");
+            signOut({ redirect: true, callbackUrl: "/auth/signin" });
+            sendResponse({ success: true });
+          }
+        };
+        chromeAPI.runtime.onMessage.addListener(runtimeListener);
+        return () => {
+          window.removeEventListener("message", handleMessage);
+          chromeAPI.runtime.onMessage.removeListener(runtimeListener);
+        };
+      }
+    } catch (err) {
+      console.log("ℹ️  Chrome runtime API not available");
+    }
+
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
 
   const fetchCredits = async () => {
     try {
@@ -90,6 +191,38 @@ function DashboardContent() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      // Notify extension to also log out
+      const chromeAPI = (window as any).chrome;
+      if (chromeAPI && chromeAPI.runtime) {
+        // Use a promise wrapper to ensure message is sent
+        await new Promise<void>((resolve) => {
+          chromeAPI.runtime.sendMessage(
+            {
+              action: "LOGOUT_FROM_DASHBOARD",
+            },
+            (response: any) => {
+              if (chromeAPI.runtime.lastError) {
+                console.log("ℹ️  Extension not listening for logout message");
+              } else {
+                console.log("✅ Extension notified of logout");
+              }
+              resolve();
+            }
+          );
+          // Fallback timeout in case extension doesn't respond
+          setTimeout(() => resolve(), 500);
+        });
+      }
+    } catch (err) {
+      console.log("ℹ️  Could not notify extension");
+    }
+
+    // Sign out from dashboard
+    await signOut({ redirect: true, callbackUrl: "/auth/signin" });
+  };
+
   if (status === "loading" || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -126,7 +259,7 @@ function DashboardContent() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold">AutoJobs</h1>
           <button
-            onClick={() => signOut()}
+            onClick={handleLogout}
             className="text-gray-600 hover:text-gray-900"
           >
             Sign out

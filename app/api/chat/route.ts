@@ -1,11 +1,32 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { checkRateLimit, RATE_LIMIT_PRESETS, getIdentifierFromRequest } from "@/lib/rate-limit";
 import { ChatResponseSchema, ErrorResponseSchema } from "@/app/lib/schemas";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
+    // Apply rate limiting using IP-based identifier
+    const identifier = getIdentifierFromRequest(req);
+    const rateLimitResult = checkRateLimit(
+      identifier,
+      "chat",
+      RATE_LIMIT_PRESETS.CHAT.limit,
+      RATE_LIMIT_PRESETS.CHAT.windowMs
+    );
+
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          message: `Too many requests. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter,
+        },
+        { status: 429, headers: { "Retry-After": String(rateLimitResult.retryAfter) } }
+      );
+    }
+
     // Get API key from header or fallback to environment variable
     const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
 
@@ -24,10 +45,11 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     const { message, jobDescription, resume, chatHistory } = await req.json();
 
-    if (!message) {
+    // Validate required message field
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
       return NextResponse.json(
         ErrorResponseSchema.parse({
-          error: "Message is required",
+          error: "Message is required and must be a non-empty string",
         }),
         { status: 400 }
       );

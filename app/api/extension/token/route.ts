@@ -17,7 +17,7 @@ export async function GET(): Promise<NextResponse> {
     const token = jwt.sign(
       {
         email: session.user.email,
-        id: session.user.id,
+        id: (session.user as any).id,
         iat: Math.floor(Date.now() / 1000),
       },
       process.env.AUTH_SECRET || "fallback_secret",
@@ -29,8 +29,10 @@ export async function GET(): Promise<NextResponse> {
       email: session.user.email,
       name: session.user.name,
     });
-  } catch (error: any) {
-    console.error("Extension token error:", error.message);
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    console.error("Extension token error:", errorMessage);
     return NextResponse.json(
       { error: "Failed to generate token" },
       { status: 500 }

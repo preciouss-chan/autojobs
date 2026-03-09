@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     // Fall back to NextAuth session (web)
     if (!userId) {
       const session = await auth();
-      userId = session?.user?.id || null;
+      userId = (session?.user as any)?.id || null;
     }
 
     if (!userId) {

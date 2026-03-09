@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
+import { auth } from "@/lib/auth";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
 import {
   TailorRequestSchema,
   TailorResponseSchema,
@@ -16,6 +18,31 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
+    // Get authenticated user for rate limiting
+    const session = await auth();
+    if (!session || !session.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Apply rate limiting
+    const rateLimitResult = checkRateLimit(
+      session.user.email,
+      "tailor",
+      RATE_LIMIT_PRESETS.TAILOR.limit,
+      RATE_LIMIT_PRESETS.TAILOR.windowMs
+    );
+
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          message: `Too many requests. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter,
+        },
+        { status: 429, headers: { "Retry-After": String(rateLimitResult.retryAfter) } }
+      );
+    }
+
     // Get API key from environment variable
     const apiKey = process.env.OPENAI_API_KEY;
 

@@ -1,23 +1,21 @@
+import type { JWT } from "next-auth/jwt";
+import type { Session } from "next-auth";
+import type { AuthOptions } from "next-auth";
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { getServerSession } from "next-auth/next";
 import { prisma } from "./prisma";
 
-console.log("🔐 NextAuth v4 initializing...");
-console.log("  AUTH_GOOGLE_ID:", process.env.AUTH_GOOGLE_ID ? "SET" : "MISSING");
-console.log("  AUTH_GOOGLE_SECRET:", process.env.AUTH_GOOGLE_SECRET ? "SET" : "MISSING");
-console.log("  prisma object:", typeof prisma, prisma ? "exists" : "null");
-
 if (!process.env.AUTH_GOOGLE_ID || !process.env.AUTH_GOOGLE_SECRET) {
-  console.error("❌ Missing Google OAuth credentials!");
+  throw new Error("Missing Google OAuth credentials!");
 }
 
 if (!prisma) {
   throw new Error("Prisma client not initialized!");
 }
 
-export const authOptions = {
+export const authOptions: AuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     GoogleProvider({
@@ -26,34 +24,33 @@ export const authOptions = {
     }),
   ],
   session: {
-    strategy: "jwt" as const,
+    strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   jwt: {
     secret: process.env.AUTH_SECRET || "",
   },
   callbacks: {
-    async jwt({ token, user }: any) {
-      console.log("🔐 [JWT CALLBACK] token at start:", token);
-      console.log("🔐 [JWT CALLBACK] user:", user);
+    async jwt({ token, user }: { token: JWT; user?: any }): Promise<JWT> {
       if (user) {
         token.id = user.id;
         token.email = user.email;
       }
-      console.log("🔐 [JWT CALLBACK] token at end:", token);
       return token;
     },
-    async session({ session, token }: any) {
-      console.log("🔐 [SESSION CALLBACK] session:", session);
-      console.log("🔐 [SESSION CALLBACK] token:", token);
+    async session({
+      session,
+      token,
+    }: {
+      session: Session;
+      token: JWT;
+    }): Promise<Session> {
       if (session.user && token) {
-        session.user.id = token.id;
+        (session.user as any).id = token.id as string;
       }
-      console.log("🔐 [SESSION CALLBACK] returning:", session);
       return session;
     },
-    async signIn({ user, account, profile }: any) {
-      console.log("🔐 [SIGNIN CALLBACK] user:", user);
+    async signIn(): Promise<boolean> {
       return true;
     },
   },
@@ -99,7 +96,7 @@ export const authOptions = {
     },
   },
   events: {
-    async signIn({ user }: any) {
+    async signIn({ user }: { user: any }): Promise<void> {
       // Create initial credits for new users (1 free app)
       if (user && user.id && user.email) {
         const userId = user.id;
@@ -130,10 +127,10 @@ export const authOptions = {
       }
     },
   },
-} as any;
+};
 
-// Wrapper function for NextAuth v4 - cast to any to avoid type issues
-export async function auth(): Promise<any> {
-  return await getServerSession(authOptions as any);
+// Wrapper function for NextAuth v4
+export async function auth(): Promise<Session | null> {
+  return await getServerSession(authOptions);
 }
 

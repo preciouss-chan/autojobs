@@ -14,6 +14,84 @@ const STORAGE_KEYS = {
   CREDITS: "user_credits"
 };
 
+/**
+ * Immediately check if session is still valid (used for instant logout detection)
+ */
+async function checkSessionImmediate() {
+  try {
+    const storedToken = await getAuthToken();
+    if (!storedToken) {
+      return false;
+    }
+
+    const response = await fetch("http://localhost:3000/api/extension/validate", {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const data = await response.json();
+    return data.valid === true;
+  } catch (err) {
+    console.log("ℹ️  Immediate validation check failed:", err.message);
+    return false;
+  }
+}
+
+/**
+ * Listen for token sync messages from dashboard
+ */
+window.addEventListener("message", async (event) => {
+  if (event.data.type === "EXTENSION_TOKEN_SYNC") {
+    console.log("✅ Received extension token from dashboard");
+    await storeAuthToken(event.data.token, event.data.email);
+    await updateAuthUI();
+    console.log("✅ Extension authentication synced with dashboard");
+  }
+});
+
+/**
+ * Also listen via chrome runtime for more reliable cross-extension communication
+ */
+browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  console.log("📩 Runtime message received:", msg);
+  
+  if (msg.action === "SYNC_TOKEN_FROM_DASHBOARD") {
+    console.log("✅ Received token sync via runtime message");
+    storeAuthToken(msg.token, msg.email).then(() => {
+      updateAuthUI();
+      sendResponse({ success: true });
+    });
+    return true; // Keep the message port open for async response
+  }
+  
+  if (msg.action === "LOGOUT_FROM_DASHBOARD") {
+    console.log("🚨 IMMEDIATE: Received logout signal from dashboard - verifying and logging out NOW");
+    
+    // Immediately check session validity (async)
+    checkSessionImmediate().then((isValid) => {
+      if (!isValid) {
+        console.log("✅ Server session confirmed invalid, performing logout");
+      } else {
+        console.log("⚠️  Server session still valid, but clearing locally due to dashboard logout signal");
+      }
+      
+      logout().then(async () => {
+        await updateAuthUI();
+        console.log("✅ Auto-logout completed immediately");
+        sendResponse({ success: true });
+      });
+    });
+    return true;
+  }
+});
+
 async function getAuthToken() {
   return new Promise((resolve) => {
     try {
@@ -69,6 +147,36 @@ async function logout() {
       resolve();
     }
   });
+}
+
+/**
+ * Sign out both extension and dashboard
+ */
+async function signOutEverywhere() {
+  // Sign out from extension (clear stored token)
+  await logout();
+  
+  // Tell the dashboard to log out
+  // We make a POST request to /api/auth/logout-everywhere which will clear the NextAuth cookie
+  try {
+    console.log("📤 Calling dashboard logout endpoint");
+    const response = await fetch("http://localhost:3000/api/auth/logout-everywhere", {
+      method: "POST",
+      credentials: "include", // IMPORTANT: Include cookies so the session can be verified
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+    
+    if (response.ok) {
+      console.log("✅ Dashboard also logged out (cookie cleared on server)");
+    } else {
+      // Even if 401, the extension is already logged out locally
+      console.log("ℹ️  Dashboard logout response:", response.status);
+    }
+  } catch (err) {
+    console.log("ℹ️  Could not reach dashboard, but extension is logged out locally");
+  }
 }
 
 async function refreshCreditsDisplay() {
@@ -180,8 +288,13 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
           
           // Close the auth window after a short delay
           setTimeout(() => {
-            if (authWindow && !authWindow.closed) {
-              authWindow.close();
+            try {
+              if (authWindow && !authWindow.closed) {
+                authWindow.close();
+              }
+            } catch (err) {
+              // COOP policy might block this, that's OK
+              console.log("ℹ️  Could not close window (COOP policy)");
             }
           }, 500);
           
@@ -200,17 +313,27 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
       }
 
       // Check if window was closed manually
-      if (authWindow && authWindow.closed) {
-        console.log("🔗 Auth window closed by user");
-        clearInterval(checkInterval);
+      try {
+        if (authWindow && authWindow.closed) {
+          console.log("🔗 Auth window closed by user");
+          clearInterval(checkInterval);
+        }
+      } catch (err) {
+        // COOP policy might block this check, that's OK
+        console.log("ℹ️  Could not check window status (COOP policy)");
       }
 
       // Timeout after 5 minutes
       if (checkCount > 300) { // 300 * 1 second = 5 minutes
         console.log("❌ Login timeout");
         clearInterval(checkInterval);
-        if (authWindow && !authWindow.closed) {
-          authWindow.close();
+        try {
+          if (authWindow && !authWindow.closed) {
+            authWindow.close();
+          }
+        } catch (err) {
+          // COOP policy might block this, that's OK
+          console.log("ℹ️  Could not close window (COOP policy)");
         }
         loginBtn.disabled = false;
         loginBtn.textContent = "Login";
@@ -226,9 +349,79 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
   }
 });
 
+/**
+ * Session Poller: Check if user is still logged in
+ * Runs while popup is open, detects real-time logout from dashboard
+ */
+let sessionPollerInterval = null;
+
+async function startSessionPoller() {
+  if (sessionPollerInterval) {
+    console.log("ℹ️  Session poller already running");
+    return;
+  }
+
+  console.log("🔄 Starting session poller (checks every 2 seconds)");
+
+   sessionPollerInterval = setInterval(async () => {
+    try {
+      const storedToken = await getAuthToken();
+      if (!storedToken) {
+        // No stored token, nothing to check
+        console.log("ℹ️  No stored token, skipping check");
+        return;
+      }
+
+      // Check if server session still valid
+      // IMPORTANT: credentials: "include" tells browser to send cookies even for cross-origin requests
+      const response = await fetch("http://localhost:3000/api/extension/validate", {
+        method: "GET",
+        credentials: "include", // Send cookies so server can check session
+        headers: {
+          "Content-Type": "application/json"
+        }
+      });
+
+      if (!response.ok) {
+        console.log("❌ Validation request failed");
+        return;
+      }
+
+      const data = await response.json();
+      console.log("📊 Session validation:", data.valid ? "✅ valid" : "❌ invalid");
+
+      if (!data.valid) {
+        // Session is no longer valid! User was logged out on dashboard
+        console.log("⚠️  Server session no longer valid, logging out");
+        await logout();
+        await updateAuthUI();
+        console.log("✅ Auto-logout triggered by server session loss");
+      } else {
+        console.log("✅ Server session still valid");
+      }
+    } catch (err) {
+      // Network error - keep session, it's probably temporary
+      console.log("ℹ️  Session check failed (network issue?):", err.message);
+    }
+  }, 2000); // Check every 2 seconds for faster logout detection
+}
+
+function stopSessionPoller() {
+  if (sessionPollerInterval) {
+    clearInterval(sessionPollerInterval);
+    sessionPollerInterval = null;
+    console.log("🛑 Session poller stopped");
+  }
+}
+
+// Stop poller when popup closes
+window.addEventListener("unload", () => {
+  stopSessionPoller();
+});
+
 // Handle logout button click
 document.getElementById("logoutBtn").addEventListener("click", async () => {
-  await logout();
+  await signOutEverywhere();
   await updateAuthUI();
   console.log("✅ Logged out");
 });
@@ -240,7 +433,36 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
     if (document.readyState === 'loading') {
       await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
     }
+    
+    // First check if we have a stored token
     await updateAuthUI();
+    
+    // Then try to fetch a fresh token from the backend in case the user just logged in on the dashboard
+    try {
+      console.log("🔄 Checking for dashboard login...");
+      const tokenResponse = await fetch("http://localhost:3000/api/extension/token", {
+        method: "GET",
+        credentials: "include", // Include cookies from dashboard login
+        headers: {
+          "Content-Type": "application/json"
+        }
+      });
+
+      if (tokenResponse.ok) {
+        const data = await tokenResponse.json();
+        console.log("✅ Found valid session from dashboard!");
+        // Store the token so extension continues to work
+        await storeAuthToken(data.token, data.email);
+        // Update UI to show we're logged in
+        await updateAuthUI();
+      }
+    } catch (err) {
+      // No dashboard session, that's fine - check for extension token instead
+      console.log("ℹ️  No active dashboard session");
+    }
+
+    // Start the session poller to detect real-time logouts
+    startSessionPoller();
   } catch (err) {
     console.error("Error initializing auth UI:", err);
   }

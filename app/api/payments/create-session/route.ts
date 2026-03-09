@@ -12,11 +12,13 @@ export async function POST(req: Request) {
   try {
     const session = await auth();
 
-    if (!session?.user?.email || !session?.user?.id) {
+    if (!session?.user?.email || !(session?.user as any)?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const origin = req.headers.get("origin") || "http://localhost:3000";
+    const userId = (session.user as any).id;
+    const userEmail = session.user.email;
 
     // Create Stripe checkout session
     const checkoutSession = await stripe.checkout.sessions.create({
@@ -37,9 +39,9 @@ export async function POST(req: Request) {
       mode: "payment",
       success_url: `${origin}/dashboard?payment=success`,
       cancel_url: `${origin}/dashboard?payment=cancelled`,
-      customer_email: session.user.email,
+      customer_email: userEmail,
       metadata: {
-        userId: session.user.id,
+        userId,
         credits: "100",
       },
     });
@@ -57,8 +59,8 @@ export async function POST(req: Request) {
           amount: 249,
           credits: 100,
           status: "pending",
-          userId: session.user.id,
-          email: session.user.email,
+          userId,
+          email: userEmail,
         },
       });
     }
@@ -67,10 +69,29 @@ export async function POST(req: Request) {
       sessionId: checkoutSession.id,
       checkoutUrl: checkoutSession.url,
     });
-  } catch (error) {
-    console.error("Error creating Stripe session:", error);
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    
+    if (errorMessage.includes("API_KEY")) {
+      console.error("Stripe API key configuration error:", errorMessage);
+      return NextResponse.json(
+        { error: "Payment system not configured" },
+        { status: 500 }
+      );
+    }
+
+    if (errorMessage.includes("Invalid request")) {
+      console.error("Invalid Stripe request:", errorMessage);
+      return NextResponse.json(
+        { error: "Invalid payment request" },
+        { status: 400 }
+      );
+    }
+
+    console.error("Error creating Stripe session:", errorMessage);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to create payment session" },
       { status: 500 }
     );
   }

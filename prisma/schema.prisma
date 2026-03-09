@@ -102,10 +102,12 @@ model StripePayment {
   status            String @default("pending")  // "pending", "completed", "failed"
   userId            String?  // Null until payment completed
   email             String?
+  webhookEventId    String? @unique  // Idempotency key for webhook retries
   createdAt         DateTime @default(now())
   completedAt       DateTime?
   
   @@index([stripeSessionId])
   @@index([userId])
+  @@index([webhookEventId])
 }
 

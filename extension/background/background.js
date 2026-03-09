@@ -33,6 +33,39 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.action) return;
 
   // =========================================
+  // LOGOUT_FROM_DASHBOARD (relay to popup)
+  // =========================================
+  if (msg.action === "LOGOUT_FROM_DASHBOARD") {
+    console.log("📩 LOGOUT_FROM_DASHBOARD received in background");
+    
+    // Forward to popup if it's open
+    try {
+      chrome.runtime.sendMessage(
+        {
+          action: "LOGOUT_FROM_DASHBOARD"
+        },
+        (resp) => {
+          if (chrome.runtime.lastError) {
+            console.log("ℹ️  Popup not open, but logout processed in background");
+          } else {
+            console.log("✅ Logout relayed to popup");
+          }
+        }
+      );
+    } catch (err) {
+      console.log("ℹ️  Could not relay to popup");
+    }
+    
+    // Also process locally - clear extension storage
+    chrome.storage.sync.remove(["auth_token", "user_email"], () => {
+      console.log("✅ Extension storage cleared");
+    });
+    
+    sendResponse({ success: true });
+    return;
+  }
+
+  // =========================================
   // MAKE_RESUME
   // =========================================
   if (msg.action === "MAKE_RESUME") {

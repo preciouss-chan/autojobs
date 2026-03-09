@@ -1,11 +1,32 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { checkRateLimit, RATE_LIMIT_PRESETS, getIdentifierFromRequest } from "@/lib/rate-limit";
 import { ResumeSchema, ErrorResponseSchema } from "@/app/lib/schemas";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
+    // Apply rate limiting using IP-based identifier
+    const identifier = getIdentifierFromRequest(req);
+    const rateLimitResult = checkRateLimit(
+      identifier,
+      "parse-resume",
+      RATE_LIMIT_PRESETS.PARSE_RESUME.limit,
+      RATE_LIMIT_PRESETS.PARSE_RESUME.windowMs
+    );
+
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          message: `Too many requests. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter,
+        },
+        { status: 429, headers: { "Retry-After": String(rateLimitResult.retryAfter) } }
+      );
+    }
+
     // Get API key from header or fallback to environment variable
     const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
 

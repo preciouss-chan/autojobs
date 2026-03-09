@@ -188,3 +188,23 @@ export async function refreshCreditsDisplay() {
     return 0;
   }
 }
+
+/**
+ * Sync auth token from dashboard via postMessage
+ * Called when dashboard sends a token after login
+ */
+export async function syncTokenFromDashboard(token, email) {
+  if (!token || !email) {
+    console.error("❌ Invalid token or email received from dashboard");
+    return false;
+  }
+
+  try {
+    await storeAuthToken(token, email);
+    console.log("✅ Token synced from dashboard to extension");
+    return true;
+  } catch (err) {
+    console.error("❌ Failed to sync token from dashboard:", err);
+    return false;
+  }
+}

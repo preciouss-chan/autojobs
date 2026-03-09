@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 
@@ -16,17 +16,11 @@ interface Transaction {
 }
 
 export default function BillingPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (status === "authenticated") {
-      fetchTransactions();
-    }
-  }, [status]);
-
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
       const res = await fetch("/api/transactions");
       if (res.ok) {
@@ -38,7 +32,13 @@ export default function BillingPage() {
       console.error("Error fetching transactions:", error);
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      fetchTransactions();
+    }
+  }, [status, fetchTransactions]);
 
   if (status === "unauthenticated") {
     return (

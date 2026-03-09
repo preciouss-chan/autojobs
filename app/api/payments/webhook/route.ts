@@ -38,8 +38,10 @@ export async function POST(req: Request) {
         const userId = session.metadata?.userId;
         const credits = parseInt(session.metadata?.credits || "0", 10);
         const sessionId = session.id;
+        const webhookEventId = event.id;  // Stripe event ID for idempotency
 
         console.log("🔔 [WEBHOOK] Session ID:", sessionId);
+        console.log("🔔 [WEBHOOK] Webhook Event ID:", webhookEventId);
         console.log("🔔 [WEBHOOK] User ID from metadata:", userId);
         console.log("🔔 [WEBHOOK] Credits from metadata:", credits);
         console.log("🔔 [WEBHOOK] Full metadata:", session.metadata);
@@ -48,6 +50,22 @@ export async function POST(req: Request) {
           console.error(
             "❌ [WEBHOOK] Missing userId or credits in metadata",
             { userId, credits }
+          );
+          return NextResponse.json({ received: true });
+        }
+
+        // Check if we've already processed this webhook event (idempotency check)
+        const existingProcessed = await prisma.stripePayment.findFirst({
+          where: { webhookEventId: webhookEventId },
+        });
+
+        if (existingProcessed) {
+          console.log(
+            "⚠️  [WEBHOOK] This event was already processed. Webhook event ID:",
+            webhookEventId
+          );
+          console.log(
+            "⚠️  [WEBHOOK] Skipping duplicate processing to prevent double-crediting"
           );
           return NextResponse.json({ received: true });
         }
@@ -84,6 +102,7 @@ export async function POST(req: Request) {
             data: {
               stripeSessionId: sessionId,
               stripePaymentId: paymentIntentId || `webhook_${sessionId}`,
+              webhookEventId: webhookEventId,  // Store event ID for idempotency
               amount: session.amount_total || 249,
               credits,
               status: "completed",
@@ -106,6 +125,7 @@ export async function POST(req: Request) {
             data: {
               status: "completed",
               stripePaymentId: paymentIntentId || `success_${sessionId}`,
+              webhookEventId: webhookEventId,  // Store event ID for idempotency
               completedAt: new Date(),
             },
           });
@@ -114,38 +134,54 @@ export async function POST(req: Request) {
 
         // Add credits to user
         console.log("🔔 [WEBHOOK] Incrementing credits for user:", userId);
-        const updated = await prisma.credits.update({
-          where: { userId },
-          data: {
-            balance: {
-              increment: credits,
+        try {
+          const updated = await prisma.credits.update({
+            where: { userId },
+            data: {
+              balance: {
+                increment: credits,
+              },
+              totalPurchased: {
+                increment: credits,
+              },
             },
-            totalPurchased: {
-              increment: credits,
-            },
-          },
-        });
+          });
 
-        console.log(
-          `✅ [WEBHOOK] Credits added to user ${userId}: +${credits} (new balance: ${updated.balance})`
-        );
+          console.log(
+            `✅ [WEBHOOK] Credits added to user ${userId}: +${credits} (new balance: ${updated.balance})`
+          );
+        } catch (err: unknown) {
+          const errorMsg =
+            err instanceof Error ? err.message : String(err);
+          console.error("❌ [WEBHOOK] Failed to update credits:", errorMsg);
+          throw new Error(
+            `Failed to credit user ${userId}: ${errorMsg}`
+          );
+        }
 
         // Record transaction with expiration (1 year from now)
         const expiresAt = new Date();
         expiresAt.setFullYear(expiresAt.getFullYear() + 1);
 
         console.log("🔔 [WEBHOOK] Creating transaction record");
-        const transaction = await prisma.transaction.create({
-          data: {
-            userId,
-            type: "purchase",
-            amount: credits,
-            reason: `stripe_purchase_${credits}`,
-            stripePaymentId: paymentIntentId || sessionId,
-            expiresAt,
-          },
-        });
-        console.log("✅ [WEBHOOK] Transaction created:", transaction.id);
+        try {
+          const transaction = await prisma.transaction.create({
+            data: {
+              userId,
+              type: "purchase",
+              amount: credits,
+              reason: `stripe_purchase_${credits}`,
+              stripePaymentId: paymentIntentId || sessionId,
+              expiresAt,
+            },
+          });
+          console.log("✅ [WEBHOOK] Transaction created:", transaction.id);
+        } catch (err: unknown) {
+          const errorMsg =
+            err instanceof Error ? err.message : String(err);
+          console.error("❌ [WEBHOOK] Failed to create transaction:", errorMsg);
+          throw new Error(`Failed to record transaction: ${errorMsg}`);
+        }
         break;
       }
 
@@ -154,10 +190,20 @@ export async function POST(req: Request) {
         const session = event.data.object as Stripe.Checkout.Session;
         console.log("🔔 [WEBHOOK] Expired session ID:", session.id);
 
-        await prisma.stripePayment.update({
-          where: { stripeSessionId: session.id },
-          data: { status: "failed" },
-        });
+        try {
+          await prisma.stripePayment.update({
+            where: { stripeSessionId: session.id },
+            data: { status: "failed" },
+          });
+        } catch (err: unknown) {
+          const errorMsg =
+            err instanceof Error ? err.message : String(err);
+          console.error(
+            "⚠️  [WEBHOOK] Failed to update expired session:",
+            errorMsg
+          );
+          // Don't fail the webhook if update fails - session is already expired
+        }
 
         console.log(`❌ [WEBHOOK] Checkout session expired: ${session.id}`);
         break;

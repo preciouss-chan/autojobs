@@ -9,7 +9,7 @@ export async function GET(req: Request): Promise<NextResponse> {
   try {
     const session = await auth();
 
-    if (!session?.user?.id) {
+    if (!session?.user || !(session.user as any).id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -18,7 +18,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     const type = searchParams.get("type"); // Optional filter by transaction type
 
     const where: { userId: string; type?: string } = {
-      userId: session.user.id,
+      userId: (session.user as any).id,
     };
 
     if (type) {
@@ -41,8 +41,10 @@ export async function GET(req: Request): Promise<NextResponse> {
     });
 
     return NextResponse.json(transactions);
-  } catch (err: any) {
-    console.error("Error fetching transactions:", err.message || String(err));
+  } catch (err: unknown) {
+    const errorMessage =
+      err instanceof Error ? err.message : String(err);
+    console.error("Error fetching transactions:", errorMessage);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

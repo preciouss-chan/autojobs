@@ -247,114 +247,127 @@ async function updateAuthUI() {
   }
 }
 
-// Handle login button click
-document.getElementById("loginBtn").addEventListener("click", async () => {
+/**
+ * Attach login button handler - deferred until DOM is ready
+ */
+function attachLoginButtonHandler() {
   const loginBtn = document.getElementById("loginBtn");
-  loginBtn.disabled = true;
-  loginBtn.textContent = "Opening login...";
+  if (!loginBtn) {
+    console.warn("Login button not found, will retry");
+    return false;
+  }
 
-  try {
-    const width = 500;
-    const height = 600;
-    const left = Math.round(screen.width / 2 - width / 2);
-    const top = Math.round(screen.height / 2 - height / 2);
+  loginBtn.addEventListener("click", async () => {
+    const loginBtn = document.getElementById("loginBtn");
+    loginBtn.disabled = true;
+    loginBtn.textContent = "Opening login...";
 
-    const windowFeatures = `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
-    // Open the signin page with a callback to the dashboard
-    const authWindow = window.open(
-      "http://localhost:3000/auth/signin?callbackUrl=http://localhost:3000/dashboard",
-      "AutoJobsAuth",
-      windowFeatures
-    );
+    try {
+      const width = 500;
+      const height = 600;
+      const left = Math.round(screen.width / 2 - width / 2);
+      const top = Math.round(screen.height / 2 - height / 2);
 
-    if (!authWindow) {
-      throw new Error("Failed to open login window. Check popup blocker.");
-    }
+      const windowFeatures = `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+      // Open the signin page with a callback to the dashboard
+      const authWindow = window.open(
+        "http://localhost:3000/auth/signin?callbackUrl=http://localhost:3000/dashboard",
+        "AutoJobsAuth",
+        windowFeatures
+      );
 
-    console.log("🔓 Opening login window, polling for completion...");
-
-    // Poll to check if auth is complete
-    let checkCount = 0;
-    const checkInterval = setInterval(async () => {
-      checkCount++;
-      
-      try {
-        // Try to fetch the extension token - if it succeeds, user is logged in
-        const tokenResponse = await fetchWithTimeout("http://localhost:3000/api/extension/token", {
-          method: "GET",
-          credentials: "include", // Include cookies from the signin
-          headers: {
-            "Content-Type": "application/json"
-          }
-        }, API_TIMEOUTS.TOKEN);
-
-        if (tokenResponse.ok) {
-          const data = await tokenResponse.json();
-          console.log("✅ Token fetch successful! User is logged in.");
-          clearInterval(checkInterval);
-          
-          // Close the auth window after a short delay
-          setTimeout(() => {
-            try {
-              if (authWindow && !authWindow.closed) {
-                authWindow.close();
-              }
-            } catch (err) {
-              // COOP policy might block this, that's OK
-              console.log("ℹ️  Could not close window (COOP policy)");
-            }
-          }, 500);
-          
-          // Store the token
-          await storeAuthToken(data.token, data.email);
-          await updateAuthUI();
-          loginBtn.disabled = false;
-          loginBtn.textContent = "Login";
-          console.log("✅ Login successful:", data.email);
-        }
-      } catch (err) {
-        // Still waiting for login, continue polling
-        if (checkCount % 10 === 0) {
-          console.log(`⏳ Still waiting for login... (${checkCount}s)`);
-        }
+      if (!authWindow) {
+        throw new Error("Failed to open login window. Check popup blocker.");
       }
 
-      // Check if window was closed manually
-      try {
-        if (authWindow && authWindow.closed) {
-          console.log("🔗 Auth window closed by user");
-          clearInterval(checkInterval);
-        }
-      } catch (err) {
-        // COOP policy might block this check, that's OK
-        console.log("ℹ️  Could not check window status (COOP policy)");
-      }
+      console.log("🔓 Opening login window, polling for completion...");
 
-      // Timeout after 5 minutes
-      if (checkCount > 300) { // 300 * 1 second = 5 minutes
-        console.log("❌ Login timeout");
-        clearInterval(checkInterval);
+      // Poll to check if auth is complete
+      let checkCount = 0;
+      const checkInterval = setInterval(async () => {
+        checkCount++;
+        
         try {
-          if (authWindow && !authWindow.closed) {
-            authWindow.close();
+          // Try to fetch the extension token - if it succeeds, user is logged in
+          const tokenResponse = await fetchWithTimeout("http://localhost:3000/api/extension/token", {
+            method: "GET",
+            credentials: "include", // Include cookies from the signin
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }, API_TIMEOUTS.TOKEN);
+
+          if (tokenResponse.ok) {
+            const data = await tokenResponse.json();
+            console.log("✅ Token fetch successful! User is logged in.");
+            clearInterval(checkInterval);
+            
+            // Close the auth window after a short delay
+            setTimeout(() => {
+              try {
+                if (authWindow && !authWindow.closed) {
+                  authWindow.close();
+                }
+              } catch (err) {
+                // COOP policy might block this, that's OK
+                console.log("ℹ️  Could not close window (COOP policy)");
+              }
+            }, 500);
+            
+            // Store the token
+            await storeAuthToken(data.token, data.email);
+            await updateAuthUI();
+            loginBtn.disabled = false;
+            loginBtn.textContent = "Login";
+            console.log("✅ Login successful:", data.email);
           }
         } catch (err) {
-          // COOP policy might block this, that's OK
-          console.log("ℹ️  Could not close window (COOP policy)");
+          // Still waiting for login, continue polling
+          if (checkCount % 10 === 0) {
+            console.log(`⏳ Still waiting for login... (${checkCount}s)`);
+          }
         }
-        loginBtn.disabled = false;
-        loginBtn.textContent = "Login";
-        alert("Login timeout. Please try again.");
-      }
-    }, 1000); // Check every second
 
-  } catch (err) {
-    console.error("Login error:", err);
-    alert(`Login failed: ${err.message}`);
-    loginBtn.disabled = false;
-    loginBtn.textContent = "Login";
-  }
-});
+        // Check if window was closed manually
+        try {
+          if (authWindow && authWindow.closed) {
+            console.log("🔗 Auth window closed by user");
+            clearInterval(checkInterval);
+          }
+        } catch (err) {
+          // COOP policy might block this check, that's OK
+          console.log("ℹ️  Could not check window status (COOP policy)");
+        }
+
+        // Timeout after 5 minutes
+        if (checkCount > 300) { // 300 * 1 second = 5 minutes
+          console.log("❌ Login timeout");
+          clearInterval(checkInterval);
+          try {
+            if (authWindow && !authWindow.closed) {
+              authWindow.close();
+            }
+          } catch (err) {
+            // COOP policy might block this, that's OK
+            console.log("ℹ️  Could not close window (COOP policy)");
+          }
+          loginBtn.disabled = false;
+          loginBtn.textContent = "Login";
+          alert("Login timeout. Please try again.");
+        }
+      }, 1000); // Check every second
+
+    } catch (err) {
+      console.error("Login error:", err);
+      alert(`Login failed: ${err.message}`);
+      loginBtn.disabled = false;
+      loginBtn.textContent = "Login";
+    }
+  });
+  
+  console.log("✅ Login button handler attached");
+  return true;
+}
 
 /**
  * Session Poller: Check if user is still logged in
@@ -426,19 +439,42 @@ window.addEventListener("unload", () => {
   stopSessionPoller();
 });
 
-// Handle logout button click
-document.getElementById("logoutBtn").addEventListener("click", async () => {
-  await signOutEverywhere();
-  await updateAuthUI();
-  console.log("✅ Logged out");
-});
+/**
+ * Attach logout button handler - deferred until DOM is ready
+ */
+function attachLogoutButtonHandler() {
+  const logoutBtn = document.getElementById("logoutBtn");
+  if (!logoutBtn) {
+    console.warn("Logout button not found, will retry");
+    return false;
+  }
 
-// Initialize auth UI on popup open
+  logoutBtn.addEventListener("click", async () => {
+    await signOutEverywhere();
+    await updateAuthUI();
+    console.log("✅ Logged out");
+  });
+  
+  console.log("✅ Logout button handler attached");
+  return true;
+}
+
+// Initialize auth UI and event handlers on popup open
 (async () => {
   try {
     // Wait for DOM to be ready
     if (document.readyState === 'loading') {
       await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
+    }
+    
+    console.log("🚀 DOM ready, initializing popup...");
+    
+    // Attach event listeners now that DOM is ready
+    if (!attachLoginButtonHandler()) {
+      console.error("Failed to attach login button handler");
+    }
+    if (!attachLogoutButtonHandler()) {
+      console.error("Failed to attach logout button handler");
     }
     
     // First check if we have a stored token

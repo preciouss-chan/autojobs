@@ -1,4 +1,5 @@
 import { compareTwoStrings } from "string-similarity";
+import type { Resume, Project, Experience } from "@/app/lib/schemas";
 
 /**
  * Find the best matching item from a list using fuzzy matching
@@ -10,12 +11,12 @@ import { compareTwoStrings } from "string-similarity";
  * @param similarityThreshold - Minimum similarity score (0-1) to consider a match
  * @returns The best matching item or null if no match above threshold
  */
-function findBestMatch(
-  items: any[],
+function findBestMatch<T extends Project | Experience>(
+  items: T[],
   searchValue: string,
-  keyProperty: string,
+  keyProperty: keyof T,
   similarityThreshold: number = 0.7
-): any | null {
+): T | null {
   if (!items || items.length === 0) {
     return null;
   }
@@ -29,7 +30,7 @@ function findBestMatch(
   
   // Calculate similarity scores for all items
   const scores = items.map((item, index) => {
-    const itemValue = (item[keyProperty] || "").toLowerCase().trim();
+    const itemValue = String(item[keyProperty] || "").toLowerCase().trim();
     
     // Base similarity score from string-similarity
     let similarity = compareTwoStrings(itemValue, searchValueLower);
@@ -67,29 +68,32 @@ function findBestMatch(
  * @param edits - The tailored edits from the AI
  * @returns Updated resume with edits applied
  */
-export function mergeResume(baseResume: any, edits: any): any {
+export function mergeResume(baseResume: Resume, edits: Record<string, unknown>): Resume {
   const updatedResume = structuredClone(baseResume);
 
+  // Type guard for edits
+  const editsTyped = edits as {
+    updated_summary?: string;
+    project_edits?: Record<string, string[]>;
+    experience_edits?: Record<string, string[]>;
+    skills_to_add?: Record<string, string[]>;
+  };
+
   // 1. Merge updated summary
-  if (edits.updated_summary && edits.updated_summary.trim() !== "") {
-    updatedResume.summary = edits.updated_summary;
+  if (editsTyped.updated_summary && editsTyped.updated_summary.trim() !== "") {
+    updatedResume.summary = editsTyped.updated_summary;
   }
 
   // 2. Merge project edits with fuzzy matching
-  if (edits.project_edits) {
+  if (editsTyped.project_edits) {
     for (const [projectName, newBullets] of Object.entries(
-      edits.project_edits
+      editsTyped.project_edits
     )) {
       // Use fuzzy matching to find the best matching project
-      // Threshold of 0.65 (65%) allows for:
-      // - Capitalization differences: "E-Commerce Platform" vs "E-commerce platform"
-      // - Minor additions: "React Dashboard" vs "React Dashboard App"
-      // - Single character typos: "Gogle" vs "Google"
-      // Edge cases (like multiple typos in short names) will be skipped
-      const project = findBestMatch(
-        updatedResume.projects,
-        projectName as string,
-        "name",
+      const project = findBestMatch<Project>(
+        updatedResume.projects as Project[],
+        projectName,
+        "name" as keyof Project,
         0.65
       );
 
@@ -100,20 +104,15 @@ export function mergeResume(baseResume: any, edits: any): any {
   }
 
   // 3. Merge experience edits with fuzzy matching
-  if (edits.experience_edits) {
+  if (editsTyped.experience_edits) {
     for (const [companyName, newBullets] of Object.entries(
-      edits.experience_edits
+      editsTyped.experience_edits
     )) {
       // Use fuzzy matching to find the best matching company
-      // Threshold of 0.65 (65%) allows for variations like:
-      // - "Google" vs "Google Inc" (prefix matching with 0.75 bonus)
-      // - "Microsoft" vs "Microsoft Corporation" (prefix matching with 0.75 bonus)
-      // - "TechCorp" vs "TechCorp Inc." (minor additions)
-      // - Typos with single character errors: "Microsft" vs "Microsoft"
-      const exp = findBestMatch(
-        updatedResume.experience,
-        companyName as string,
-        "company",
+      const exp = findBestMatch<Experience>(
+        updatedResume.experience as Experience[],
+        companyName,
+        "company" as keyof Experience,
         0.65
       );
 
@@ -124,21 +123,21 @@ export function mergeResume(baseResume: any, edits: any): any {
   }
 
   // 4. Merge skills additions
-  if (edits.skills_to_add) {
-    const skillSections = ["languages", "frameworks_libraries", "tools"];
+  if (editsTyped.skills_to_add) {
+    const skillSections = ["languages", "frameworks_libraries", "tools"] as const;
 
     for (const section of skillSections) {
-      if (edits.skills_to_add[section]) {
-        const newSkills: string[] = edits.skills_to_add[section];
+      if (editsTyped.skills_to_add[section]) {
+        const newSkills = editsTyped.skills_to_add[section];
 
         for (const skill of newSkills) {
           // Check if skill already exists (case-insensitive)
-          const skillExists = updatedResume.skills[section].some(
+          const skillExists = (updatedResume.skills[section] as string[]).some(
             (s: string) => s.toLowerCase() === skill.toLowerCase()
           );
 
           if (!skillExists) {
-            updatedResume.skills[section].push(skill);
+            (updatedResume.skills[section] as string[]).push(skill);
           }
         }
       }

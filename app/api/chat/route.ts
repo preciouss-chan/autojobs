@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { checkRateLimit, RATE_LIMIT_PRESETS, getIdentifierFromRequest } from "@/lib/rate-limit";
 import { ChatResponseSchema, ErrorResponseSchema } from "@/app/lib/schemas";
+import { LLM_CONFIG } from "@/app/lib/llm-config";
 
 export const runtime = "nodejs";
 
@@ -159,7 +160,7 @@ NEVER give generic answers. ALWAYS be specific with names, numbers, and details 
     const response = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: messages,
-      temperature: 0.4, // Lower for more deterministic interview answers
+      temperature: LLM_CONFIG.CONVERSATIONAL.temperature, // Use consistent temperature for conversational AI
       max_tokens: 600, // Increased for more detailed answers
     });
 

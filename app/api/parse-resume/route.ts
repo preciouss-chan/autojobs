@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { checkRateLimit, RATE_LIMIT_PRESETS, getIdentifierFromRequest } from "@/lib/rate-limit";
 import { ResumeSchema, ErrorResponseSchema } from "@/app/lib/schemas";
+import { LLM_CONFIG } from "@/app/lib/llm-config";
 
 export const runtime = "nodejs";
 
@@ -151,6 +152,7 @@ Extract all information accurately. If a field is not present, use an empty stri
           content: prompt
         }
       ],
+      temperature: LLM_CONFIG.DETERMINISTIC.temperature, // Use consistent temperature for structured parsing
       response_format: { type: "json_object" }
     });
 

@@ -10,6 +10,7 @@ import {
   ErrorResponseSchema,
 } from "@/app/lib/schemas";
 import type { JobRequirements } from "@/app/lib/schemas";
+import { LLM_CONFIG } from "@/app/lib/llm-config";
 
 // Fallback resume path
 const resumePath = path.join(process.cwd(), "data", "resume.json");
@@ -160,6 +161,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
           content: prompt,
         },
       ],
+      temperature: LLM_CONFIG.FOCUSED.temperature, // Use consistent temperature for focused tasks
       response_format: { type: "json_object" },
     });
 

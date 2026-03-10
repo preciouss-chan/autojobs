@@ -1,6 +1,12 @@
 "use client";
 
-export default function ResumePreview({ resume }: { resume: any }) {
+import type { Resume } from "@/app/lib/schemas";
+
+interface ResumePreviewProps {
+  readonly resume: Resume;
+}
+
+export default function ResumePreview({ resume }: ResumePreviewProps): React.ReactElement {
   const ed = resume.education?.[0] || {};
 
   return (
@@ -124,6 +130,6 @@ export default function ResumePreview({ resume }: { resume: any }) {
       </section>
 
     </div>
-  );
+  ) as React.ReactElement;
 }
 

@@ -7,6 +7,7 @@ import {
   ErrorResponseSchema,
 } from "@/app/lib/schemas";
 import type { JobRequirements } from "@/app/lib/schemas";
+import { LLM_CONFIG } from "@/app/lib/llm-config";
 
 export const runtime = "nodejs";
 
@@ -88,6 +89,7 @@ Rules:
           content: prompt,
         },
       ],
+      temperature: LLM_CONFIG.DETERMINISTIC.temperature, // Use consistent temperature for structured extraction
       response_format: { type: "json_object" },
     });
 

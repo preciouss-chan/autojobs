@@ -5,24 +5,24 @@ import ResumePreview from "./ResumePreview";
 import { ToastContainer, useToast } from "@/app/components/Toast";
 import resumeData from "@/data/resume.json";
 import { useState } from "react";
-import type { JobRequirements } from "@/app/lib/schemas";
+import type { JobRequirements, Resume, TailorResponse } from "@/app/lib/schemas";
 
 export const dynamic = "force-dynamic";
 
 export default function TailorPage(): React.ReactElement {
   const { toasts, addToast, removeToast } = useToast();
-  const [job, setJob] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [extracting, setExtracting] = useState(false);
-  const [uploadingResume, setUploadingResume] = useState(false);
+  const [job, setJob] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [extracting, setExtracting] = useState<boolean>(false);
+  const [uploadingResume, setUploadingResume] = useState<boolean>(false);
   const [requirements, setRequirements] = useState<JobRequirements | null>(
     null
   );
-  const [result, setResult] = useState<Record<string, unknown> | null>(null);
-  const [currentResume, setCurrentResume] = useState<Record<string, unknown>>(
-    resumeData
+  const [result, setResult] = useState<TailorResponse | null>(null);
+  const [currentResume, setCurrentResume] = useState<Resume>(
+    resumeData as Resume
   );
-  const [mergedResume, setMergedResume] = useState<Record<string, unknown> | null>(null);
+  const [mergedResume, setMergedResume] = useState<Resume | null>(null);
 
   function extractJobText(input: string): string {
     input = input.trim();
@@ -99,7 +99,7 @@ export default function TailorPage(): React.ReactElement {
         return;
       }
 
-      const parsedResume = (await response.json()) as Record<string, unknown>;
+      const parsedResume = (await response.json()) as Resume;
       setCurrentResume(parsedResume);
       addToast("success", "Resume uploaded and parsed successfully!");
     } catch (err: unknown) {
@@ -132,7 +132,7 @@ export default function TailorPage(): React.ReactElement {
         }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as TailorResponse;
       console.log("API Response:", data);
       setResult(data);
       const merged = mergeResume(currentResume, data);
@@ -165,72 +165,91 @@ export default function TailorPage(): React.ReactElement {
           Internship Resume Tailor
         </h1>
 
-        {/* Resume Upload Section */}
-        <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <label className="block mb-2 text-sm font-medium text-gray-700">
-            Resume (PDF)
-          </label>
-          <div className="flex items-center gap-4">
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={handleResumeUpload}
-              disabled={uploadingResume}
-              className="flex-1 text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 disabled:opacity-50"
-            />
-            {uploadingResume && (
-              <span className="text-sm text-gray-600">Uploading...</span>
-            )}
-          </div>
-          <p className="text-xs text-gray-600 mt-2">
-            Upload your resume PDF to parse and use for tailoring. If not provided, the default resume will be used.
-          </p>
-        </div>
+         {/* Resume Upload Section */}
+         <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+           <label htmlFor="resume-upload" className="block mb-2 text-sm font-medium text-gray-700">
+             Resume (PDF)
+           </label>
+           <div className="flex items-center gap-4">
+             <input
+               id="resume-upload"
+               type="file"
+               accept=".pdf"
+               onChange={handleResumeUpload}
+               disabled={uploadingResume}
+               aria-label="Upload PDF resume file"
+               aria-busy={uploadingResume}
+               aria-describedby="resume-upload-hint"
+               className="flex-1 text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+             />
+             {uploadingResume && (
+               <span className="text-sm text-gray-600" role="status" aria-live="polite">
+                 Uploading...
+               </span>
+             )}
+           </div>
+           <p id="resume-upload-hint" className="text-xs text-gray-600 mt-2">
+             Upload your resume PDF to parse and use for tailoring. If not provided, the default resume will be used.
+           </p>
+         </div>
 
-        {/* Job Description Input */}
-        <label className="block mb-2 text-sm font-medium text-gray-700">
-          Job Description
-        </label>
-        <textarea
-          className="w-full h-48 p-4 border rounded-lg outline-none focus:ring-2 focus:ring-blue-400 placeholder-gray-500 text-gray-900"
-          placeholder="Paste job description here..."
-          value={job}
-          onChange={(e) => setJob(e.target.value)}
-        />
+         {/* Job Description Input */}
+         <label htmlFor="job-description" className="block mb-2 text-sm font-medium text-gray-700">
+           Job Description
+         </label>
+         <textarea
+           id="job-description"
+           className="w-full h-48 p-4 border rounded-lg outline-none focus:ring-2 focus:ring-blue-400 placeholder-gray-500 text-gray-900"
+           placeholder="Paste job description here..."
+           value={job}
+           onChange={(e) => setJob(e.target.value)}
+           aria-describedby="job-description-hint"
+         />
+         <p id="job-description-hint" className="text-xs text-gray-500 mt-1">
+           Paste a job description to extract requirements or tailor your resume.
+         </p>
 
-        {/* Buttons */}
-        <div className="flex gap-4 mt-4">
-          <button
-            onClick={handleExtractRequirements}
-            disabled={extracting || job.trim() === ""}
-            className={`px-5 py-2 rounded-lg text-white font-medium transition ${
-              extracting || job.trim() === ""
-                ? "bg-gray-400"
-                : "bg-green-600 hover:bg-green-700"
-            }`}
-          >
-            {extracting ? "Extracting..." : "Extract Requirements"}
-          </button>
+         {/* Buttons */}
+         <div className="flex gap-4 mt-4">
+           <button
+             type="button"
+             onClick={handleExtractRequirements}
+             disabled={extracting || job.trim() === ""}
+             aria-label={extracting ? "Extracting job requirements" : "Extract job requirements from description"}
+             aria-busy={extracting}
+             className={`px-5 py-2 rounded-lg text-white font-medium transition ${
+               extracting || job.trim() === ""
+                 ? "bg-gray-400 cursor-not-allowed"
+                 : "bg-green-600 hover:bg-green-700"
+             }`}
+           >
+             {extracting ? "Extracting..." : "Extract Requirements"}
+           </button>
 
-          <button
-            onClick={handleTailor}
-            disabled={loading || job.trim() === ""}
-            className={`px-5 py-2 rounded-lg text-white font-medium transition ${
-              loading || job.trim() === ""
-                ? "bg-blue-400"
-                : "bg-blue-600 hover:bg-blue-700"
-            }`}
-          >
-            {loading ? "Tailoring..." : "Tailor Resume"}
-          </button>
+           <button
+             type="button"
+             onClick={handleTailor}
+             disabled={loading || job.trim() === ""}
+             aria-label={loading ? "Tailoring your resume" : "Tailor resume to job description"}
+             aria-busy={loading}
+             className={`px-5 py-2 rounded-lg text-white font-medium transition ${
+               loading || job.trim() === ""
+                 ? "bg-blue-400 cursor-not-allowed"
+                 : "bg-blue-600 hover:bg-blue-700"
+             }`}
+           >
+             {loading ? "Tailoring..." : "Tailor Resume"}
+           </button>
 
-          <button
-            onClick={handleClear}
-            className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-          >
-            Clear
-          </button>
-        </div>
+           <button
+             type="button"
+             onClick={handleClear}
+             aria-label="Clear all inputs and results"
+             className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+           >
+             Clear
+           </button>
+         </div>
 
         {/* Extracted Requirements Section */}
         {requirements && (
@@ -362,25 +381,27 @@ export default function TailorPage(): React.ReactElement {
             </section>
 
             {/* Cover Letter */}
-            <section>
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold">Cover Letter</h2>
-                <button
-                  onClick={() => copy(String(result.cover_letter || ""))}
-                  className="text-blue-600 hover:underline"
-                >
-                  Copy
-                </button>
-              </div>
+             <section>
+               <div className="flex justify-between items-center">
+                 <h2 className="text-xl font-semibold">Cover Letter</h2>
+                 <button
+                   type="button"
+                   onClick={() => copy(String(result.cover_letter || ""))}
+                   aria-label="Copy cover letter text to clipboard"
+                   className="text-blue-600 hover:underline transition focus:outline-none focus:ring-2 focus:ring-blue-400 rounded px-2 py-1"
+                 >
+                   Copy
+                 </button>
+               </div>
 
-              <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm whitespace-pre-wrap">
-                {result.cover_letter ? (
-                  String(result.cover_letter)
-                ) : (
-                  <p className="text-gray-500">No cover letter returned.</p>
-                )}
-              </div>
-            </section>
+               <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm whitespace-pre-wrap">
+                 {result.cover_letter ? (
+                   String(result.cover_letter)
+                 ) : (
+                   <p className="text-gray-500">No cover letter returned.</p>
+                 )}
+               </div>
+             </section>
 
             {mergedResume && (
               <>
@@ -390,42 +411,44 @@ export default function TailorPage(): React.ReactElement {
                   </h2>
                   <ResumePreview resume={mergedResume} />
                 </div>
-                <div className="flex gap-3 mt-4">
-                  <button
-                    onClick={async () => {
-                      try {
-                        const res = await fetch("/api/export/pdf", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify(mergedResume),
-                        });
+                 <div className="flex gap-3 mt-4">
+                   <button
+                     type="button"
+                     onClick={async () => {
+                       try {
+                         const res = await fetch("/api/export/pdf", {
+                           method: "POST",
+                           headers: { "Content-Type": "application/json" },
+                           body: JSON.stringify(mergedResume),
+                         });
 
-                        const contentType = res.headers.get("content-type") ?? "";
+                         const contentType = res.headers.get("content-type") ?? "";
 
-                        if (!contentType.includes("pdf")) {
-                          const errorText = await res.text();
-                          console.error("PDF ERROR:", errorText);
-                          alert("PDF FAILED — Check console");
-                          return;
-                        }
+                         if (!contentType.includes("pdf")) {
+                           const errorText = await res.text();
+                           console.error("PDF ERROR:", errorText);
+                           alert("PDF FAILED — Check console");
+                           return;
+                         }
 
-                        const blob = await res.blob();
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = "resume.pdf";
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      } catch (err) {
-                        console.error(err);
-                        alert("Something went wrong generating PDF");
-                      }
-                    }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded"
-                  >
-                    Download PDF
-                  </button>
-                </div>
+                         const blob = await res.blob();
+                         const url = URL.createObjectURL(blob);
+                         const a = document.createElement("a");
+                         a.href = url;
+                         a.download = "resume.pdf";
+                         a.click();
+                         URL.revokeObjectURL(url);
+                       } catch (err) {
+                         console.error(err);
+                         alert("Something went wrong generating PDF");
+                       }
+                     }}
+                     aria-label="Download tailored resume as PDF"
+                     className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition focus:outline-none focus:ring-2 focus:ring-blue-400"
+                   >
+                     Download PDF
+                   </button>
+                 </div>
               </>
             )}
           </div>

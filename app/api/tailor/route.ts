@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
 import {
   TailorRequestSchema,
@@ -11,6 +12,9 @@ import {
 } from "@/app/lib/schemas";
 import type { JobRequirements } from "@/app/lib/schemas";
 import { LLM_CONFIG } from "@/app/lib/llm-config";
+
+// Credit cost for tailoring
+const TAILOR_CREDIT_COST = 10;
 
 // Fallback resume path
 const resumePath = path.join(process.cwd(), "data", "resume.json");
@@ -23,6 +27,11 @@ export async function POST(req: Request): Promise<NextResponse> {
     const session = await auth();
     if (!session || !session.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = (session.user as any)?.id;
+    if (!userId) {
+      return NextResponse.json({ error: "User ID not found" }, { status: 401 });
     }
 
     // Apply rate limiting
@@ -41,6 +50,27 @@ export async function POST(req: Request): Promise<NextResponse> {
           retryAfter: rateLimitResult.retryAfter,
         },
         { status: 429, headers: { "Retry-After": String(rateLimitResult.retryAfter) } }
+      );
+    }
+
+    // Check credit balance before processing
+    const credits = await prisma.credits.findUnique({
+      where: { userId },
+    });
+
+    if (!credits) {
+      return NextResponse.json({ error: "Credits not found" }, { status: 404 });
+    }
+
+    if (credits.balance < TAILOR_CREDIT_COST) {
+      return NextResponse.json(
+        {
+          error: "Insufficient credits",
+          required: TAILOR_CREDIT_COST,
+          available: credits.balance,
+          message: `This operation requires ${TAILOR_CREDIT_COST} credits but you only have ${credits.balance}`,
+        },
+        { status: 402 } // Payment required
       );
     }
 
@@ -171,6 +201,35 @@ Return ONLY valid JSON (no markdown, no code blocks):
       const parsed = JSON.parse(jsonString);
       const validated = TailorResponseSchema.parse(parsed);
       console.log("TAILOR RESPONSE:", validated);
+      
+      // Deduct credits after successful tailoring
+      try {
+        await prisma.credits.update({
+          where: { userId },
+          data: {
+            balance: {
+              decrement: TAILOR_CREDIT_COST,
+            },
+            lastDeductedAt: new Date(),
+          },
+        });
+
+        // Record transaction
+        await prisma.transaction.create({
+          data: {
+            userId,
+            type: "deduction",
+            amount: -TAILOR_CREDIT_COST,
+            reason: "resume_tailoring",
+          },
+        });
+
+        console.log(`Deducted ${TAILOR_CREDIT_COST} credits for user ${userId}`);
+      } catch (creditError: unknown) {
+        console.error("Failed to deduct credits:", creditError);
+        // Don't fail the request if credit deduction fails, just log it
+      }
+
       return NextResponse.json(validated);
     } catch (parseErr: unknown) {
       console.error("Failed to parse/validate tailor response:", parseErr);

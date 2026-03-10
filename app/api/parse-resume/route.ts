@@ -1,17 +1,32 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { checkRateLimit, RATE_LIMIT_PRESETS, getIdentifierFromRequest } from "@/lib/rate-limit";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
 import { ResumeSchema, ErrorResponseSchema } from "@/app/lib/schemas";
 import { LLM_CONFIG } from "@/app/lib/llm-config";
 
 export const runtime = "nodejs";
 
+// Credit cost for resume parsing (after first free use)
+const PARSE_RESUME_CREDIT_COST = 5;
+
 export async function POST(req: Request): Promise<NextResponse> {
   try {
-    // Apply rate limiting using IP-based identifier
-    const identifier = getIdentifierFromRequest(req);
+    // Require authentication
+    const session = await auth();
+    if (!session || !session.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = (session.user as any)?.id;
+    if (!userId) {
+      return NextResponse.json({ error: "User ID not found" }, { status: 401 });
+    }
+
+    // Apply rate limiting per user
     const rateLimitResult = checkRateLimit(
-      identifier,
+      session.user.email,
       "parse-resume",
       RATE_LIMIT_PRESETS.PARSE_RESUME.limit,
       RATE_LIMIT_PRESETS.PARSE_RESUME.windowMs
@@ -26,6 +41,30 @@ export async function POST(req: Request): Promise<NextResponse> {
         },
         { status: 429, headers: { "Retry-After": String(rateLimitResult.retryAfter) } }
       );
+    }
+
+    // Check if user has already used their free resume parse
+    const credits = await prisma.credits.findUnique({
+      where: { userId },
+    });
+
+    if (!credits) {
+      return NextResponse.json({ error: "Credits not found" }, { status: 404 });
+    }
+
+    // If not first time, check credit balance
+    if (credits.usedFreeResumeParse) {
+      if (credits.balance < PARSE_RESUME_CREDIT_COST) {
+        return NextResponse.json(
+          {
+            error: "Insufficient credits",
+            required: PARSE_RESUME_CREDIT_COST,
+            available: credits.balance,
+            message: `This operation requires ${PARSE_RESUME_CREDIT_COST} credits but you only have ${credits.balance}`,
+          },
+          { status: 402 } // Payment required
+        );
+      }
     }
 
     // Get API key from header or fallback to environment variable
@@ -161,6 +200,58 @@ Extract all information accurately. If a field is not present, use an empty stri
     try {
       const parsed = JSON.parse(jsonString);
       const validated = ResumeSchema.parse(parsed);
+      
+      // Deduct credits after successful parsing (if not first time)
+      try {
+        if (credits.usedFreeResumeParse) {
+          // Subsequent parses: deduct 5 credits
+          await prisma.credits.update({
+            where: { userId },
+            data: {
+              balance: {
+                decrement: PARSE_RESUME_CREDIT_COST,
+              },
+              lastDeductedAt: new Date(),
+            },
+          });
+
+          // Record transaction
+          await prisma.transaction.create({
+            data: {
+              userId,
+              type: "deduction",
+              amount: -PARSE_RESUME_CREDIT_COST,
+              reason: "resume_parsing",
+            },
+          });
+
+          console.log(`Deducted ${PARSE_RESUME_CREDIT_COST} credits for user ${userId}`);
+        } else {
+          // First time: mark as used free parse, no deduction
+          await prisma.credits.update({
+            where: { userId },
+            data: {
+              usedFreeResumeParse: true,
+            },
+          });
+
+          // Record transaction for audit trail
+          await prisma.transaction.create({
+            data: {
+              userId,
+              type: "grant",
+              amount: 0,
+              reason: "free_resume_parsing",
+            },
+          });
+
+          console.log(`Used free resume parse for user ${userId}`);
+        }
+      } catch (creditError: unknown) {
+        console.error("Failed to update credits:", creditError);
+        // Don't fail the request if credit deduction fails, just log it
+      }
+      
       return NextResponse.json(validated);
     } catch (parseErr: unknown) {
       console.error("Failed to parse/validate resume response:", parseErr);

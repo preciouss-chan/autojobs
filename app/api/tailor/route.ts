@@ -13,8 +13,8 @@ import {
 import type { JobRequirements } from "@/app/lib/schemas";
 import { LLM_CONFIG } from "@/app/lib/llm-config";
 
-// Credit cost for tailoring
-const TAILOR_CREDIT_COST = 10;
+// Credit cost for tailoring (1 credit per application)
+const TAILOR_CREDIT_COST = 1;
 
 // Fallback resume path
 const resumePath = path.join(process.cwd(), "data", "resume.json");

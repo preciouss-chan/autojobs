@@ -145,22 +145,24 @@ export async function POST(req: Request): Promise<NextResponse> {
        resume.experience.forEach((exp, index) => {
          checkPageBreak(50);
 
-         // Role and company (bold)
+         // Role and company (bold) with dates on right
          setFontSize(11);
          doc.setFont("helvetica", "bold");
          const role = exp.role ?? "";
          const company = exp.company ?? "";
          const roleCompanyText = `${role} — ${company}`;
+         
+         // Render role/company on left
          (doc.text as any)(roleCompanyText, margin, yPosition);
-         yPosition += 14;
-
-         // Dates
+         
+         // Render dates on right (right-aligned)
          if (exp.dates) {
-           setFontSize(9);
+           setFontSize(11);
            doc.setFont("helvetica", "normal");
-           (doc.text as any)(exp.dates, margin, yPosition);
-           yPosition += 10;
+           (doc.text as any)(exp.dates, pageWidth - margin, yPosition, { align: "right" });
          }
+         
+         yPosition += 14;
 
          // Bullets
          if (exp.bullets && exp.bullets.length > 0) {
@@ -189,22 +191,22 @@ export async function POST(req: Request): Promise<NextResponse> {
        resume.projects.forEach((proj, index) => {
          checkPageBreak(40);
 
-         // Project name (bold)
+         // Project name (bold) with link/date on right
          setFontSize(11);
          doc.setFont("helvetica", "bold");
          const projectName = proj.name ?? "";
          (doc.text as any)(projectName, margin, yPosition);
-         yPosition += 14;
-
-         // Link and date
+         
+         // Link and date on right (right-aligned)
          if (proj.link || proj.date) {
            setFontSize(9);
            doc.setFont("helvetica", "normal");
            const linkDateParts = [proj.link, proj.date].filter((s): s is string => Boolean(s));
            const linkDateText = linkDateParts.join(" • ");
-           (doc.text as any)(linkDateText, margin, yPosition);
-           yPosition += 10;
+           (doc.text as any)(linkDateText, pageWidth - margin, yPosition, { align: "right" });
          }
+         
+         yPosition += 14;
 
          // Bullets
          if (proj.bullets && proj.bullets.length > 0) {

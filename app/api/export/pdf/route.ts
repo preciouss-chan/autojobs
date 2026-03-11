@@ -199,7 +199,7 @@ export async function POST(req: Request): Promise<NextResponse> {
          
          // Link and date on right (right-aligned)
          if (proj.link || proj.date) {
-           setFontSize(9);
+           setFontSize(11);
            doc.setFont("helvetica", "normal");
            const linkDateParts = [proj.link, proj.date].filter((s): s is string => Boolean(s));
            const linkDateText = linkDateParts.join(" • ");

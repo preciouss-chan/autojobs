@@ -612,6 +612,13 @@ async function checkCachedResume() {
   }
 })();
 
+// =============== DASHBOARD BUTTON ===============
+document.getElementById("dashboardBtn").addEventListener("click", async () => {
+  console.log("👉 Dashboard button clicked");
+  // Open dashboard page
+  browserAPI.tabs.create({ url: `${BACKEND_URL}/dashboard` });
+});
+
 // =============== OPEN CHATBOT ===============
 document.getElementById("openChatbot").addEventListener("click", async () => {
   // Get current tab to extract job description

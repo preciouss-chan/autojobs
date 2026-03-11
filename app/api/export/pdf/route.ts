@@ -39,7 +39,7 @@ export async function POST(req: Request): Promise<NextResponse> {
        // Add horizontal line with more margin
        doc.setDrawColor(0);
        doc.line(margin - 5, yPosition - 6, pageWidth - margin + 5, yPosition - 6);
-       yPosition += 2;
+       yPosition += 10; // Increased from 2 to 10 for more spacing after section title
      };
 
      const addText = (text: string, fontSize = 10, isBold = false, extraSpacing = 4): void => {

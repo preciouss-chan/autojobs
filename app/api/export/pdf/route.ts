@@ -47,9 +47,9 @@ export async function POST(req: Request): Promise<NextResponse> {
       const lines = doc.splitTextToSize(text as string, contentWidth) as string[];
       (doc.text as any)(lines, margin, yPosition);
       // Fixed: Use proper line height calculation
-      // jsPDF line height is roughly fontSize * 0.35 (in points)
-      const lineHeight = (fontSize * 0.35) + 2; // Add small padding
-      yPosition += lines.length * lineHeight + 4;
+      // jsPDF text() method uses internal line height of approximately fontSize * 1.15
+      const lineHeight = fontSize * 1.15;
+      yPosition += lines.length * lineHeight + 8;
     };
 
     const checkPageBreak = (neededSpace: number): void => {
@@ -120,17 +120,17 @@ export async function POST(req: Request): Promise<NextResponse> {
           yPosition += 8;
         }
 
-         // Bullets
-          if (exp.bullets && exp.bullets.length > 0) {
-            setFontSize(10);
-            doc.setFont("helvetica", "normal");
-            exp.bullets.slice(0, 5).forEach((bullet) => {
-              const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
-              (doc.text as any)(bulletLines, margin + 8, yPosition);
-              // Fixed: Proper line height calculation for 10pt font
-              yPosition += bulletLines.length * 4 + 3;
-            });
-          }
+        // Bullets
+        if (exp.bullets && exp.bullets.length > 0) {
+          setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          exp.bullets.slice(0, 5).forEach((bullet) => {
+            const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
+            (doc.text as any)(bulletLines, margin + 8, yPosition);
+            // Fixed: Proper line height calculation for 10pt font
+            yPosition += bulletLines.length * 11.5 + 3;
+          });
+        }
 
          yPosition += 6;
       });
@@ -161,17 +161,17 @@ export async function POST(req: Request): Promise<NextResponse> {
            yPosition += 10;
          }
 
-          // Bullets
-          if (proj.bullets && proj.bullets.length > 0) {
-            setFontSize(10);
-            doc.setFont("helvetica", "normal");
-            proj.bullets.slice(0, 3).forEach((bullet) => {
-              const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
-              (doc.text as any)(bulletLines, margin + 8, yPosition);
-              // Fixed: Proper line height calculation
-              yPosition += bulletLines.length * 4 + 3;
-            });
-          }
+        // Bullets
+        if (proj.bullets && proj.bullets.length > 0) {
+          setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          proj.bullets.slice(0, 3).forEach((bullet) => {
+            const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
+            (doc.text as any)(bulletLines, margin + 8, yPosition);
+            // Fixed: Proper line height calculation
+            yPosition += bulletLines.length * 11.5 + 3;
+          });
+        }
 
          yPosition += 6;
       });
@@ -197,10 +197,10 @@ export async function POST(req: Request): Promise<NextResponse> {
          setFontSize(10);
          doc.setFont("helvetica", "normal");
          skillsArr.forEach((skillLine) => {
-            const lines = doc.splitTextToSize(skillLine as string, contentWidth) as string[];
-            (doc.text as any)(lines, margin, yPosition);
-            // Fixed: Proper line height calculation
-            yPosition += lines.length * 4 + 3;
+           const lines = doc.splitTextToSize(skillLine as string, contentWidth) as string[];
+           (doc.text as any)(lines, margin, yPosition);
+           // Fixed: Proper line height calculation
+           yPosition += lines.length * 11.5 + 3;
          });
        }
     }

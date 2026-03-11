@@ -36,9 +36,9 @@ export async function POST(req: Request): Promise<NextResponse> {
        (doc.text as any)(title, margin, yPosition);
        yPosition += 12;
 
-       // Add horizontal line
+       // Add horizontal line with more margin
        doc.setDrawColor(0);
-       doc.line(margin, yPosition - 6, pageWidth - margin, yPosition - 6);
+       doc.line(margin - 5, yPosition - 6, pageWidth - margin + 5, yPosition - 6);
        yPosition += 2;
      };
 
@@ -62,29 +62,71 @@ export async function POST(req: Request): Promise<NextResponse> {
     // ===== HEADER =====
     setFontSize(16);
     doc.setFont("helvetica", "bold");
-    (doc.text as any)(resume.name ?? "Resume", margin, yPosition);
+    // Center the name
+    (doc.text as any)(resume.name ?? "Resume", pageWidth / 2, yPosition, { align: "center" });
     yPosition += 16;
 
-    // Contact line
-    const contactParts = [
-      resume.contact?.email ?? "",
-      resume.contact?.phone ?? "",
-      resume.contact?.linkedin ?? "",
-      resume.contact?.github ?? "",
-    ].filter((s): s is string => s.length > 0);
-
-    if (contactParts.length > 0) {
+    // Contact line - render with blue/underlined URLs
+    if (resume.contact?.email || resume.contact?.phone || resume.contact?.linkedin || resume.contact?.github) {
       setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      const contactText = contactParts.join(" • ");
-      const contactLines = doc.splitTextToSize(contactText as string, contentWidth) as string[];
-      (doc.text as any)(contactLines, margin, yPosition);
-      yPosition += contactLines.length * 4 + 10;
+      
+      const contactItems: Array<{ text: string; isUrl: boolean }> = [];
+      if (resume.contact?.email) {
+        contactItems.push({ text: resume.contact.email, isUrl: false });
+      }
+      if (resume.contact?.phone) {
+        contactItems.push({ text: resume.contact.phone, isUrl: false });
+      }
+      if (resume.contact?.linkedin) {
+        contactItems.push({ text: resume.contact.linkedin, isUrl: true });
+      }
+      if (resume.contact?.github) {
+        contactItems.push({ text: resume.contact.github, isUrl: true });
+      }
+      
+      // Render contact items with separators
+      let currentX = margin;
+      const contactY = yPosition;
+      
+      for (let i = 0; i < contactItems.length; i++) {
+        const item = contactItems[i];
+        
+        // Add separator before item (not before first item)
+        if (i > 0) {
+          doc.setTextColor(0, 0, 0);
+          doc.setFont("helvetica", "normal");
+          const sepText = " • ";
+          (doc.text as any)(sepText, currentX, contactY);
+          currentX += doc.getTextWidth(sepText);
+        }
+        
+        if (item.isUrl) {
+          // Render URLs as blue and underlined
+          doc.setTextColor(0, 0, 255);
+          doc.setFont("helvetica", "normal");
+          (doc.text as any)(item.text, currentX, contactY);
+          const textWidth = doc.getTextWidth(item.text);
+          // Draw underline
+          doc.setDrawColor(0, 0, 255);
+          doc.line(currentX, contactY + 2, currentX + textWidth, contactY + 2);
+          doc.setDrawColor(0);
+          currentX += textWidth;
+        } else {
+          // Regular text (email, phone)
+          doc.setTextColor(0, 0, 0);
+          doc.setFont("helvetica", "normal");
+          (doc.text as any)(item.text, currentX, contactY);
+          currentX += doc.getTextWidth(item.text);
+        }
+      }
+      
+      doc.setTextColor(0, 0, 0);
+      yPosition += 10;
     }
 
-    // Horizontal line
+    // Horizontal line with more margin
     doc.setDrawColor(0);
-    doc.line(margin, yPosition, pageWidth - margin, yPosition);
+    doc.line(margin - 5, yPosition, pageWidth - margin + 5, yPosition);
     yPosition += 8;
 
     // ===== SUMMARY =====

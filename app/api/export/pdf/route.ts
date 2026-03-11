@@ -24,40 +24,40 @@ export async function POST(req: Request): Promise<NextResponse> {
     const contentWidth = pageWidth - 2 * margin;
     let yPosition = margin;
 
-    // Helper functions
-    const setFontSize = (size: number): void => {
-      doc.setFontSize(size);
-    };
+     // Helper functions
+     const setFontSize = (size: number): void => {
+       doc.setFontSize(size);
+     };
 
-    const addSectionTitle = (title: string): void => {
-      setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      (doc.text as any)(title, margin, yPosition);
-      yPosition += 10;
+     const addSectionTitle = (title: string): void => {
+       yPosition += 6; // Space before section
+       setFontSize(12);
+       doc.setFont("helvetica", "bold");
+       (doc.text as any)(title, margin, yPosition);
+       yPosition += 12;
 
-      // Add horizontal line
-      doc.setDrawColor(0);
-      doc.line(margin, yPosition - 3, pageWidth - margin, yPosition - 3);
-      yPosition += 2;
-    };
+       // Add horizontal line
+       doc.setDrawColor(0);
+       doc.line(margin, yPosition - 6, pageWidth - margin, yPosition - 6);
+       yPosition += 2;
+     };
 
-    const addText = (text: string, fontSize = 10, isBold = false): void => {
-      setFontSize(fontSize);
-      doc.setFont("helvetica", isBold ? "bold" : "normal");
-      const lines = doc.splitTextToSize(text as string, contentWidth) as string[];
-      (doc.text as any)(lines, margin, yPosition);
-      // Fixed: Use proper line height calculation
-      // jsPDF text() method uses internal line height of approximately fontSize * 1.15
-      const lineHeight = fontSize * 1.15;
-      yPosition += lines.length * lineHeight + 8;
-    };
+     const addText = (text: string, fontSize = 10, isBold = false, extraSpacing = 4): void => {
+       setFontSize(fontSize);
+       doc.setFont("helvetica", isBold ? "bold" : "normal");
+       const lines = doc.splitTextToSize(text as string, contentWidth) as string[];
+       (doc.text as any)(lines, margin, yPosition);
+       // Use proper line height: jsPDF's internal line spacing
+       const lineHeight = fontSize * 1.15;
+       yPosition += lines.length * lineHeight + extraSpacing;
+     };
 
-    const checkPageBreak = (neededSpace: number): void => {
-      if (yPosition + neededSpace > pageHeight - margin) {
-        doc.addPage();
-        yPosition = margin;
-      }
-    };
+     const checkPageBreak = (neededSpace: number): void => {
+       if (yPosition + neededSpace > pageHeight - margin) {
+         doc.addPage();
+         yPosition = margin;
+       }
+     };
 
     // ===== HEADER =====
     setFontSize(16);
@@ -95,61 +95,64 @@ export async function POST(req: Request): Promise<NextResponse> {
       yPosition += 4;
     }
 
-    // ===== EXPERIENCE =====
-    if (resume.experience && resume.experience.length > 0) {
-      checkPageBreak(60);
-      addSectionTitle("EXPERIENCE");
+     // ===== EXPERIENCE =====
+     if (resume.experience && resume.experience.length > 0) {
+       checkPageBreak(60);
+       addSectionTitle("EXPERIENCE");
 
-      resume.experience.forEach((exp) => {
-        checkPageBreak(50);
+       resume.experience.forEach((exp, index) => {
+         checkPageBreak(50);
 
-        // Role and company
-        setFontSize(11);
-        doc.setFont("helvetica", "bold");
-        const role = exp.role ?? "";
-        const company = exp.company ?? "";
-        const roleCompanyText = `${role} — ${company}`;
-        (doc.text as any)(roleCompanyText, margin, yPosition);
-        yPosition += 10;
+         // Role and company (bold)
+         setFontSize(11);
+         doc.setFont("helvetica", "bold");
+         const role = exp.role ?? "";
+         const company = exp.company ?? "";
+         const roleCompanyText = `${role} — ${company}`;
+         (doc.text as any)(roleCompanyText, margin, yPosition);
+         yPosition += 14;
 
-        // Dates (right-aligned, but we'll put it below for simplicity)
-        if (exp.dates) {
-          setFontSize(9);
-          doc.setFont("helvetica", "normal");
-          (doc.text as any)(exp.dates, margin, yPosition);
-          yPosition += 8;
-        }
+         // Dates
+         if (exp.dates) {
+           setFontSize(9);
+           doc.setFont("helvetica", "normal");
+           (doc.text as any)(exp.dates, margin, yPosition);
+           yPosition += 10;
+         }
 
-        // Bullets
-        if (exp.bullets && exp.bullets.length > 0) {
-          setFontSize(10);
-          doc.setFont("helvetica", "normal");
-          exp.bullets.slice(0, 5).forEach((bullet) => {
-            const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
-            (doc.text as any)(bulletLines, margin + 8, yPosition);
-            // Fixed: Proper line height calculation for 10pt font
-            yPosition += bulletLines.length * 11.5 + 3;
-          });
-        }
+         // Bullets
+         if (exp.bullets && exp.bullets.length > 0) {
+           setFontSize(10);
+           doc.setFont("helvetica", "normal");
+           exp.bullets.slice(0, 5).forEach((bullet) => {
+             const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
+             (doc.text as any)(bulletLines, margin + 8, yPosition);
+             const lineHeight = 10 * 1.15;
+             yPosition += bulletLines.length * lineHeight + 2;
+           });
+         }
 
-         yPosition += 6;
-      });
-    }
+         // Add spacing between experience entries
+         if (index < resume.experience.length - 1) {
+           yPosition += 10;
+         }
+       });
+     }
 
-    // ===== PROJECTS =====
-    if (resume.projects && resume.projects.length > 0) {
-      checkPageBreak(60);
-      addSectionTitle("PROJECTS");
+     // ===== PROJECTS =====
+     if (resume.projects && resume.projects.length > 0) {
+       checkPageBreak(60);
+       addSectionTitle("PROJECTS");
 
-      resume.projects.forEach((proj) => {
-        checkPageBreak(40);
+       resume.projects.forEach((proj, index) => {
+         checkPageBreak(40);
 
-        // Project name
-        setFontSize(11);
-        doc.setFont("helvetica", "bold");
-        const projectName = proj.name ?? "";
-        (doc.text as any)(projectName, margin, yPosition);
-        yPosition += 10;
+         // Project name (bold)
+         setFontSize(11);
+         doc.setFont("helvetica", "bold");
+         const projectName = proj.name ?? "";
+         (doc.text as any)(projectName, margin, yPosition);
+         yPosition += 14;
 
          // Link and date
          if (proj.link || proj.date) {
@@ -161,34 +164,37 @@ export async function POST(req: Request): Promise<NextResponse> {
            yPosition += 10;
          }
 
-        // Bullets
-        if (proj.bullets && proj.bullets.length > 0) {
-          setFontSize(10);
-          doc.setFont("helvetica", "normal");
-          proj.bullets.slice(0, 3).forEach((bullet) => {
-            const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
-            (doc.text as any)(bulletLines, margin + 8, yPosition);
-            // Fixed: Proper line height calculation
-            yPosition += bulletLines.length * 11.5 + 3;
-          });
-        }
+         // Bullets
+         if (proj.bullets && proj.bullets.length > 0) {
+           setFontSize(10);
+           doc.setFont("helvetica", "normal");
+           proj.bullets.slice(0, 3).forEach((bullet) => {
+             const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
+             (doc.text as any)(bulletLines, margin + 8, yPosition);
+             const lineHeight = 10 * 1.15;
+             yPosition += bulletLines.length * lineHeight + 2;
+           });
+         }
 
-         yPosition += 6;
-      });
-    }
+         // Add spacing between projects
+         if (index < resume.projects.length - 1) {
+           yPosition += 10;
+         }
+       });
+     }
 
-    // ===== SKILLS =====
-    if (resume.skills) {
-      const skillsArr = [];
-      if (resume.skills.languages && resume.skills.languages.length > 0) {
-        skillsArr.push(`Languages: ${resume.skills.languages.join(", ")}`);
-      }
-      if (resume.skills.frameworks_libraries && resume.skills.frameworks_libraries.length > 0) {
-        skillsArr.push(`Frameworks: ${resume.skills.frameworks_libraries.join(", ")}`);
-      }
-      if (resume.skills.tools && resume.skills.tools.length > 0) {
-        skillsArr.push(`Tools: ${resume.skills.tools.join(", ")}`);
-      }
+     // ===== SKILLS =====
+     if (resume.skills) {
+       const skillsArr = [];
+       if (resume.skills.languages && resume.skills.languages.length > 0) {
+         skillsArr.push(`Languages: ${resume.skills.languages.join(", ")}`);
+       }
+       if (resume.skills.frameworks_libraries && resume.skills.frameworks_libraries.length > 0) {
+         skillsArr.push(`Frameworks: ${resume.skills.frameworks_libraries.join(", ")}`);
+       }
+       if (resume.skills.tools && resume.skills.tools.length > 0) {
+         skillsArr.push(`Tools: ${resume.skills.tools.join(", ")}`);
+       }
 
        if (skillsArr.length > 0) {
          checkPageBreak(60);
@@ -196,37 +202,40 @@ export async function POST(req: Request): Promise<NextResponse> {
 
          setFontSize(10);
          doc.setFont("helvetica", "normal");
-         skillsArr.forEach((skillLine) => {
+         skillsArr.forEach((skillLine, index) => {
            const lines = doc.splitTextToSize(skillLine as string, contentWidth) as string[];
            (doc.text as any)(lines, margin, yPosition);
-           // Fixed: Proper line height calculation
-           yPosition += lines.length * 11.5 + 3;
+           const lineHeight = 10 * 1.15;
+           yPosition += lines.length * lineHeight + 4;
          });
        }
-    }
+     }
 
-    // ===== EDUCATION =====
-    if (resume.education && resume.education.length > 0) {
-      checkPageBreak(40);
-      addSectionTitle("EDUCATION");
+     // ===== EDUCATION =====
+     if (resume.education && resume.education.length > 0) {
+       checkPageBreak(40);
+       addSectionTitle("EDUCATION");
 
-       resume.education.forEach((edu) => {
+       resume.education.forEach((edu, index) => {
          const degree = edu.degree ?? "";
          const institution = edu.institution ?? "";
          const degreeText = `${degree} — ${institution}`;
-         addText(degreeText, 10, true);
+         addText(degreeText, 10, true, 6);
 
          const detailsArr = [];
          if (edu.graduation_year) detailsArr.push(`Graduation: ${edu.graduation_year}`);
          if (edu.gpa) detailsArr.push(`GPA: ${edu.gpa}`);
 
          if (detailsArr.length > 0) {
-           addText(detailsArr.join(" • "), 9);
+           addText(detailsArr.join(" • "), 9, false, 8);
          }
 
-         yPosition += 8;
+         // Add spacing between education entries
+         if (index < resume.education.length - 1) {
+           yPosition += 8;
+         }
        });
-    }
+     }
 
     // Convert PDF to buffer
     const pdfBuffer = Buffer.from(doc.output("arraybuffer"));

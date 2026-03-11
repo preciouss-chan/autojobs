@@ -46,7 +46,10 @@ export async function POST(req: Request): Promise<NextResponse> {
       doc.setFont("helvetica", isBold ? "bold" : "normal");
       const lines = doc.splitTextToSize(text as string, contentWidth) as string[];
       (doc.text as any)(lines, margin, yPosition);
-      yPosition += lines.length * (fontSize * 0.4) + 2;
+      // Fixed: Use proper line height calculation
+      // jsPDF line height is roughly fontSize * 0.35 (in points)
+      const lineHeight = (fontSize * 0.35) + 2; // Add small padding
+      yPosition += lines.length * lineHeight + 4;
     };
 
     const checkPageBreak = (neededSpace: number): void => {
@@ -76,7 +79,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       const contactText = contactParts.join(" • ");
       const contactLines = doc.splitTextToSize(contactText as string, contentWidth) as string[];
       (doc.text as any)(contactLines, margin, yPosition);
-      yPosition += contactLines.length * 3 + 6;
+      yPosition += contactLines.length * 4 + 10;
     }
 
     // Horizontal line
@@ -117,18 +120,19 @@ export async function POST(req: Request): Promise<NextResponse> {
           yPosition += 8;
         }
 
-        // Bullets
-        if (exp.bullets && exp.bullets.length > 0) {
-          setFontSize(10);
-          doc.setFont("helvetica", "normal");
-          exp.bullets.slice(0, 5).forEach((bullet) => {
-            const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
-            (doc.text as any)(bulletLines, margin + 8, yPosition);
-            yPosition += bulletLines.length * 3 + 2;
-          });
-        }
+         // Bullets
+          if (exp.bullets && exp.bullets.length > 0) {
+            setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            exp.bullets.slice(0, 5).forEach((bullet) => {
+              const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
+              (doc.text as any)(bulletLines, margin + 8, yPosition);
+              // Fixed: Proper line height calculation for 10pt font
+              yPosition += bulletLines.length * 4 + 3;
+            });
+          }
 
-        yPosition += 4;
+         yPosition += 6;
       });
     }
 
@@ -147,28 +151,29 @@ export async function POST(req: Request): Promise<NextResponse> {
         (doc.text as any)(projectName, margin, yPosition);
         yPosition += 10;
 
-        // Link and date
-        if (proj.link || proj.date) {
-          setFontSize(9);
-          doc.setFont("helvetica", "normal");
-          const linkDateParts = [proj.link, proj.date].filter((s): s is string => Boolean(s));
-          const linkDateText = linkDateParts.join(" • ");
-          (doc.text as any)(linkDateText, margin, yPosition);
-          yPosition += 8;
-        }
+         // Link and date
+         if (proj.link || proj.date) {
+           setFontSize(9);
+           doc.setFont("helvetica", "normal");
+           const linkDateParts = [proj.link, proj.date].filter((s): s is string => Boolean(s));
+           const linkDateText = linkDateParts.join(" • ");
+           (doc.text as any)(linkDateText, margin, yPosition);
+           yPosition += 10;
+         }
 
-        // Bullets
-        if (proj.bullets && proj.bullets.length > 0) {
-          setFontSize(10);
-          doc.setFont("helvetica", "normal");
-          proj.bullets.slice(0, 3).forEach((bullet) => {
-            const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
-            (doc.text as any)(bulletLines, margin + 8, yPosition);
-            yPosition += bulletLines.length * 3 + 2;
-          });
-        }
+          // Bullets
+          if (proj.bullets && proj.bullets.length > 0) {
+            setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            proj.bullets.slice(0, 3).forEach((bullet) => {
+              const bulletLines = doc.splitTextToSize(`• ${bullet}` as string, contentWidth - 10) as string[];
+              (doc.text as any)(bulletLines, margin + 8, yPosition);
+              // Fixed: Proper line height calculation
+              yPosition += bulletLines.length * 4 + 3;
+            });
+          }
 
-        yPosition += 4;
+         yPosition += 6;
       });
     }
 
@@ -185,18 +190,19 @@ export async function POST(req: Request): Promise<NextResponse> {
         skillsArr.push(`Tools: ${resume.skills.tools.join(", ")}`);
       }
 
-      if (skillsArr.length > 0) {
-        checkPageBreak(60);
-        addSectionTitle("SKILLS");
+       if (skillsArr.length > 0) {
+         checkPageBreak(60);
+         addSectionTitle("SKILLS");
 
-        setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        skillsArr.forEach((skillLine) => {
-          const lines = doc.splitTextToSize(skillLine as string, contentWidth) as string[];
-          (doc.text as any)(lines, margin, yPosition);
-          yPosition += lines.length * 3 + 4;
-        });
-      }
+         setFontSize(10);
+         doc.setFont("helvetica", "normal");
+         skillsArr.forEach((skillLine) => {
+            const lines = doc.splitTextToSize(skillLine as string, contentWidth) as string[];
+            (doc.text as any)(lines, margin, yPosition);
+            // Fixed: Proper line height calculation
+            yPosition += lines.length * 4 + 3;
+         });
+       }
     }
 
     // ===== EDUCATION =====
@@ -204,22 +210,22 @@ export async function POST(req: Request): Promise<NextResponse> {
       checkPageBreak(40);
       addSectionTitle("EDUCATION");
 
-      resume.education.forEach((edu) => {
-        const degree = edu.degree ?? "";
-        const institution = edu.institution ?? "";
-        const degreeText = `${degree} — ${institution}`;
-        addText(degreeText, 10, true);
+       resume.education.forEach((edu) => {
+         const degree = edu.degree ?? "";
+         const institution = edu.institution ?? "";
+         const degreeText = `${degree} — ${institution}`;
+         addText(degreeText, 10, true);
 
-        const detailsArr = [];
-        if (edu.graduation_year) detailsArr.push(`Graduation: ${edu.graduation_year}`);
-        if (edu.gpa) detailsArr.push(`GPA: ${edu.gpa}`);
+         const detailsArr = [];
+         if (edu.graduation_year) detailsArr.push(`Graduation: ${edu.graduation_year}`);
+         if (edu.gpa) detailsArr.push(`GPA: ${edu.gpa}`);
 
-        if (detailsArr.length > 0) {
-          addText(detailsArr.join(" • "), 9);
-        }
+         if (detailsArr.length > 0) {
+           addText(detailsArr.join(" • "), 9);
+         }
 
-        yPosition += 4;
-      });
+         yPosition += 8;
+       });
     }
 
     // Convert PDF to buffer

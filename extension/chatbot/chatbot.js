@@ -1,6 +1,8 @@
 // chatbot/chatbot.js
 console.log("🔥 Chatbot loaded");
 
+import { BACKEND_URL } from '../shared/config.js';
+
 let jobDescription = "";
 let resumeData = null;
 let chatHistory = [];
@@ -115,10 +117,7 @@ async function sendMessage() {
   chatHistory.push({ role: 'user', content: message });
   
   try {
-    // Get backend URL (should match background.js)
-    const backendUrl = "http://localhost:3000"; // Update this to match your hosted backend
-    
-    const response = await fetch(`${backendUrl}/api/chat`, {
+    const response = await fetch(`${BACKEND_URL}/api/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

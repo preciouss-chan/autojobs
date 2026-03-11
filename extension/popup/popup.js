@@ -3,15 +3,18 @@ console.log("🔥 popup.js loaded");
 
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
-// Import timeout utilities
+// Import timeout utilities and config
 import { fetchWithTimeout, fetchJSON, API_TIMEOUTS } from '../shared/api-utils.js';
 import { parseError, showErrorNotification, showSuccessNotification, withErrorHandling } from '../shared/error-handler.js';
+import { BACKEND_URL } from '../shared/config.js';
 
 // Detect Firefox (popup closes on file picker)
 const isFirefox = typeof browser !== 'undefined' && browser.runtime && browser.runtime.getBrowserInfo;
 
 // =============== AUTHENTICATION ===============
-const API_BASE_URL = "http://localhost:3000/api";
+const API_BASE_URL = `${BACKEND_URL}/api`;
+console.log("🌐 BACKEND_URL:", BACKEND_URL);
+console.log("🌐 API_BASE_URL:", API_BASE_URL);
 const STORAGE_KEYS = {
   AUTH_TOKEN: "auth_token",
   USER_EMAIL: "user_email",
@@ -28,7 +31,7 @@ async function checkSessionImmediate() {
       return false;
     }
 
-    const response = await fetchWithTimeout("http://localhost:3000/api/extension/validate", {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/extension/validate`, {
       method: "GET",
       credentials: "include",
       headers: {
@@ -164,7 +167,7 @@ async function signOutEverywhere() {
   // We make a POST request to /api/auth/logout-everywhere which will clear the NextAuth cookie
   try {
     console.log("📤 Calling dashboard logout endpoint");
-    const response = await fetchWithTimeout("http://localhost:3000/api/auth/logout-everywhere", {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/auth/logout-everywhere`, {
       method: "POST",
       credentials: "include", // IMPORTANT: Include cookies so the session can be verified
       headers: {
@@ -185,13 +188,16 @@ async function signOutEverywhere() {
 
 async function refreshCreditsDisplay() {
   try {
-    const token = await getAuthToken();
+    let token = await getAuthToken();
+    console.log("🔍 Refreshing credits... Token exists:", !!token);
     if (!token) {
+      console.log("❌ No token found, hiding credits display");
       document.getElementById("creditDisplay").style.display = "none";
       return;
     }
 
-    const response = await fetchWithTimeout(`${API_BASE_URL}/credits/balance`, {
+    console.log("🌐 Fetching credits from:", `${API_BASE_URL}/credits/balance`);
+    let response = await fetchWithTimeout(`${API_BASE_URL}/credits/balance`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -199,19 +205,63 @@ async function refreshCreditsDisplay() {
       }
     }, API_TIMEOUTS.CREDITS);
 
+    console.log("📡 Credits response status:", response.status);
+    console.log("📡 Content-Type:", response.headers.get("content-type"));
+    
+    // If we get a 404 (Credits not found), try refreshing the token
+    if (response.status === 404) {
+      console.log("🔄 Got 404 - token may be stale. Attempting to refresh token...");
+      try {
+        // Try to get a fresh token from the extension/token endpoint
+        const tokenResponse = await fetchWithTimeout(`${API_BASE_URL}/extension/token`, {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }, API_TIMEOUTS.TOKEN);
+
+        if (tokenResponse.ok) {
+          const tokenData = await tokenResponse.json();
+          console.log("✅ Got fresh token, updating stored token");
+          await storeAuthToken(tokenData.token, tokenData.email);
+          token = tokenData.token;
+
+          // Retry the credits call with the new token
+          console.log("🔄 Retrying credits fetch with fresh token...");
+          response = await fetchWithTimeout(`${API_BASE_URL}/credits/balance`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json"
+            }
+          }, API_TIMEOUTS.CREDITS);
+        }
+      } catch (tokenErr) {
+        console.error("⚠️ Could not refresh token:", tokenErr);
+      }
+    }
+    
     if (!response.ok) {
+      const text = await response.text();
+      console.log("❌ Response not OK, body:", text.substring(0, 300));
       throw new Error(`Failed to fetch credits: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const text = await response.text();
+    console.log("📡 Raw response text:", text.substring(0, 200));
+    
+    const data = JSON.parse(text);
+    console.log("✅ Credits data received:", data);
     const creditCount = document.getElementById("creditCount");
     if (creditCount) {
       creditCount.textContent = data.balance;
     }
     document.getElementById("creditDisplay").style.display = "inline";
+    console.log("💰 Credits displayed:", data.balance);
     return data.balance;
   } catch (err) {
-    console.error("Failed to refresh credits:", err);
+    console.error("❌ Failed to refresh credits:", err);
     // Show error but don't prevent UI from loading
     const errorInfo = parseError(err, "Credits Check");
     console.warn(`⚠️ ${errorInfo.displayMessage}`);
@@ -224,6 +274,7 @@ async function updateAuthUI() {
   try {
     const token = await getAuthToken();
     const email = await getUserEmail();
+    console.log("🔄 Updating auth UI... Token:", !!token, "Email:", email);
     const loginBtn = document.getElementById("loginBtn");
     const logoutBtn = document.getElementById("logoutBtn");
     const creditDisplay = document.getElementById("creditDisplay");
@@ -234,10 +285,12 @@ async function updateAuthUI() {
     }
 
     if (token) {
+      console.log("✅ User is logged in, showing logout button and refreshing credits");
       loginBtn.style.display = "none";
       logoutBtn.style.display = "inline-block";
       await refreshCreditsDisplay();
     } else {
+      console.log("❌ User is not logged in");
       loginBtn.style.display = "inline-block";
       logoutBtn.style.display = "none";
       creditDisplay.style.display = "none";
@@ -271,7 +324,7 @@ function attachLoginButtonHandler() {
       const windowFeatures = `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
       // Open the signin page with a callback to the dashboard
       const authWindow = window.open(
-        "http://localhost:3000/auth/signin?callbackUrl=http://localhost:3000/dashboard",
+        `${BACKEND_URL}/auth/signin?callbackUrl=${BACKEND_URL}/dashboard`,
         "AutoJobsAuth",
         windowFeatures
       );
@@ -289,7 +342,7 @@ function attachLoginButtonHandler() {
         
         try {
           // Try to fetch the extension token - if it succeeds, user is logged in
-          const tokenResponse = await fetchWithTimeout("http://localhost:3000/api/extension/token", {
+          const tokenResponse = await fetchWithTimeout(`${API_BASE_URL}/extension/token`, {
             method: "GET",
             credentials: "include", // Include cookies from the signin
             headers: {
@@ -394,7 +447,7 @@ async function startSessionPoller() {
 
       // Check if server session still valid
       // IMPORTANT: credentials: "include" tells browser to send cookies even for cross-origin requests
-      const response = await fetchWithTimeout("http://localhost:3000/api/extension/validate", {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/extension/validate`, {
         method: "GET",
         credentials: "include", // Send cookies so server can check session
         headers: {
@@ -483,7 +536,7 @@ function attachLogoutButtonHandler() {
     // Then try to fetch a fresh token from the backend in case the user just logged in on the dashboard
     try {
       console.log("🔄 Checking for dashboard login...");
-      const tokenResponse = await fetchWithTimeout("http://localhost:3000/api/extension/token", {
+      const tokenResponse = await fetchWithTimeout(`${API_BASE_URL}/extension/token`, {
         method: "GET",
         credentials: "include", // Include cookies from dashboard login
         headers: {
@@ -793,11 +846,8 @@ document.getElementById("previewCoverLetter").addEventListener("click", async ()
       }
       const coverLetterText = new TextDecoder().decode(bytes);
       
-      // Use backend URL (update in background.js when deploying)
-      const backendUrl = "http://localhost:3000"; // Update this to match your hosted backend
-      
       // Convert to PDF using backend
-      const response = await fetchWithTimeout(`${backendUrl}/api/export/cover-letter`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/export/cover-letter`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: coverLetterText })
@@ -944,10 +994,7 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     const formData = new FormData();
     formData.append("file", file);
 
-    // Use backend URL (update when deploying)
-    const backendUrl = "http://localhost:3000"; // Update this to match your hosted backend
-    
-    const response = await fetchWithTimeout(`${backendUrl}/api/parse-resume`, {
+    const response = await fetchWithTimeout(`${BACKEND_URL}/api/parse-resume`, {
       method: "POST",
       body: formData
     }, API_TIMEOUTS.PARSE);
@@ -1003,7 +1050,7 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     
     // Provide more helpful error messages
     if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
-      errorMessage = "Cannot connect to server. Make sure the Next.js server is running on http://localhost:3000";
+      errorMessage = `Cannot connect to server. Make sure the server is running at ${BACKEND_URL}`;
     } else if (err.message.includes("non-JSON response")) {
       errorMessage = "Server error. Check that the server is running and the /api/parse-resume endpoint exists.";
     }

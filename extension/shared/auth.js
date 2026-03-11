@@ -2,8 +2,9 @@
 // Authentication helper for extension
 
 import { fetchWithTimeout, API_TIMEOUTS } from './api-utils.js';
+import { BACKEND_URL } from './config.js';
 
-const API_BASE_URL = "http://localhost:3000/api";
+const API_BASE_URL = `${BACKEND_URL}/api`;
 const STORAGE_KEYS = {
   AUTH_TOKEN: "auth_token",
   USER_EMAIL: "user_email",
@@ -24,7 +25,7 @@ export async function openLoginWindow() {
 
     const windowFeatures = `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
     const authWindow = window.open(
-      "http://localhost:3000/extension-auth",
+      `${BACKEND_URL}/extension-auth`,
       "AutoJobsAuth",
       windowFeatures
     );

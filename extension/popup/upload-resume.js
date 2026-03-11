@@ -1,5 +1,7 @@
 // upload-resume.js - Dedicated resume upload page script
 
+import { BACKEND_URL } from '../shared/config.js';
+
 const statusEl = document.getElementById("status");
 
 document.getElementById("resumeFile").addEventListener("change", async (e) => {
@@ -23,11 +25,7 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     const apiKeySettings = await chrome.storage.sync.get(['openaiApiKey']);
     const apiKey = apiKeySettings.openaiApiKey;
 
-    // Get backend URL from settings or use default
-    const settings = await chrome.storage.sync.get(['backendUrl']);
-    const backendUrl = settings.backendUrl || "http://localhost:3000";
-    
-    const response = await fetch(`${backendUrl}/api/parse-resume`, {
+    const response = await fetch(`${BACKEND_URL}/api/parse-resume`, {
       method: "POST",
       headers: apiKey ? { "X-OpenAI-API-Key": apiKey } : {},
       body: formData

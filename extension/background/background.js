@@ -1,12 +1,31 @@
 // background/background.js
 import { mergeResume } from "../utils/mergeResume.js";
+import { BACKEND_URL } from "../shared/config.js";
 
-// Backend URL - update this to your hosted backend URL
-// For local development, use: "http://localhost:3000"
-// For production, use your deployed backend URL
-const BASE_URL = "http://localhost:3000"; // Change this to your hosted backend URL
+// Backend URL from config
+const BASE_URL = BACKEND_URL;
 
 console.log("🔥 Background worker loaded.");
+
+// Storage keys
+const STORAGE_KEYS = {
+  AUTH_TOKEN: "auth_token",
+  USER_EMAIL: "user_email"
+};
+
+// Helper to get auth token from storage
+function getAuthToken() {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.sync.get([STORAGE_KEYS.AUTH_TOKEN], (result) => {
+        resolve(result?.[STORAGE_KEYS.AUTH_TOKEN] || null);
+      });
+    } catch (err) {
+      console.error("Error getting auth token:", err);
+      resolve(null);
+    }
+  });
+}
 
 // Unicode-safe base64 encoding
 function encodeUnicodeToBase64(str) {
@@ -96,11 +115,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         console.log("🌐 Backend URL:", BASE_URL);
         console.log("📋 Request URL will be:", `${BASE_URL}/api/tailor`);
 
-        // Call tailor API with resume data (API key is handled by backend)
+        // Get auth token for extension
+        const token = await getAuthToken();
+        if (!token) {
+          throw new Error("Not authenticated. Please login to the extension first.");
+        }
+        console.log("🔐 Using auth token for tailor API");
+
+        // Call tailor API with resume data and auth token
         const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
           method: "POST",
           headers: { 
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
           },
           body: JSON.stringify({ 
             jobDescription: msg.jobDescription,

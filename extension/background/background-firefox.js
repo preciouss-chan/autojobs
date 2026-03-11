@@ -2,18 +2,39 @@
 // Firefox-compatible background script (non-service worker)
 
 import { mergeResume } from "../utils/mergeResume.js";
+import { BACKEND_URL } from "../shared/config.js";
 
 // Use browser.* API (Firefox native) with chrome.* fallback
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
-// Backend URL - update this to your hosted backend URL
-const BASE_URL = "http://localhost:3000";
+// Backend URL from config
+const BASE_URL = BACKEND_URL;
+
+// Storage keys
+const STORAGE_KEYS = {
+  AUTH_TOKEN: "auth_token",
+  USER_EMAIL: "user_email"
+};
 
 // Note: API key is now managed by the backend server
 // The server uses the OPENAI_API_KEY environment variable
 // Extension no longer needs to handle API keys
 
 console.log("🔥 Background script loaded (Firefox).");
+
+// Helper to get auth token from storage
+function getAuthToken() {
+  return new Promise((resolve) => {
+    try {
+      browserAPI.storage.sync.get([STORAGE_KEYS.AUTH_TOKEN], (result) => {
+        resolve(result?.[STORAGE_KEYS.AUTH_TOKEN] || null);
+      });
+    } catch (err) {
+      console.error("Error getting auth token:", err);
+      resolve(null);
+    }
+  });
+}
 
 // Unicode-safe base64 encoding
 function encodeUnicodeToBase64(str) {
@@ -53,13 +74,21 @@ async function handleMakeResume(msg) {
       console.log("📄 Using default resume");
     }
 
-    console.log("🔑 API key managed by backend, calling tailor API...");
+     console.log("🔑 API key managed by backend, calling tailor API...");
     console.log("🌐 Backend URL:", BASE_URL);
+
+    // Get auth token for extension
+    const token = await getAuthToken();
+    if (!token) {
+      throw new Error("Not authenticated. Please login to the extension first.");
+    }
+    console.log("🔐 Using auth token for tailor API");
 
     const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
       method: "POST",
       headers: { 
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
       },
       body: JSON.stringify({ 
         jobDescription: msg.jobDescription,

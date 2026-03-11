@@ -5,6 +5,7 @@ import path from "path";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
+import { getUserId } from "@/lib/token";
 import {
   TailorRequestSchema,
   TailorResponseSchema,
@@ -23,20 +24,34 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
-    // Get authenticated user for rate limiting
-    const session = await auth();
-    if (!session || !session.user?.email) {
+    // Get authenticated user - try JWT token first (extension), then NextAuth session (web)
+    const authHeader = req.headers.get("Authorization");
+    let userId: string | null = null;
+    let userEmail: string | null = null;
+
+    // Try JWT token first (extension)
+    if (authHeader) {
+      userId = getUserId(authHeader, undefined);
+    }
+
+    // Fall back to NextAuth session (web)
+    if (!userId) {
+      const session = await auth();
+      if (!session || !session.user?.email) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      userId = (session.user as any)?.id;
+      userEmail = session.user.email;
+    }
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = (session.user as any)?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "User ID not found" }, { status: 401 });
-    }
-
-    // Apply rate limiting
+    // Apply rate limiting - use userId or userEmail as identifier
+    const rateLimitIdentifier = userEmail || userId;
     const rateLimitResult = checkRateLimit(
-      session.user.email,
+      rateLimitIdentifier,
       "tailor",
       RATE_LIMIT_PRESETS.TAILOR.limit,
       RATE_LIMIT_PRESETS.TAILOR.windowMs

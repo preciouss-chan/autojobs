@@ -8,6 +8,16 @@ export const runtime = "nodejs";
 
 export async function GET(): Promise<NextResponse> {
   try {
+    // AUTH_SECRET must be set in production
+    const secret = process.env.AUTH_SECRET;
+    if (!secret) {
+      console.error("❌ AUTH_SECRET is not set. Token generation will fail in production.");
+      return NextResponse.json(
+        { error: "Server configuration error: AUTH_SECRET not set" },
+        { status: 500 }
+      );
+    }
+
     const session = await auth();
 
     if (!session || !session.user?.email) {
@@ -67,7 +77,7 @@ export async function GET(): Promise<NextResponse> {
         id: userId,
         iat: Math.floor(Date.now() / 1000),
       },
-      process.env.AUTH_SECRET || "fallback_secret",
+      secret,
       { expiresIn: "30d" }
     );
 

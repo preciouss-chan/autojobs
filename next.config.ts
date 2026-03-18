@@ -17,15 +17,46 @@ const nextConfig: NextConfig = {
   // Keep Turbopack empty to avoid conflicts
   turbopack: {},
 
-  // CORS headers for Chrome extension
+  // Security headers and CORS configuration
   async headers() {
+    // Get allowed origins from environment or use sensible defaults
+    const allowedOrigins = process.env.ALLOWED_ORIGINS 
+      ? process.env.ALLOWED_ORIGINS.split(",")
+      : [
+          "https://autojobs.app",
+          "https://www.autojobs.app",
+          process.env.CHROME_EXTENSION_ID ? `chrome-extension://${process.env.CHROME_EXTENSION_ID}` : null,
+        ].filter(Boolean);
+
     return [
       {
         source: '/api/:path*',
         headers: [
-          { key: 'Access-Control-Allow-Origin', value: '*' },
-          { key: 'Access-Control-Allow-Methods', value: 'GET,POST,OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, X-OpenAI-API-Key' },
+          // Security headers
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-XSS-Protection', value: '1; mode=block' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          // CORS headers - only allow specific origins
+          { 
+            key: 'Access-Control-Allow-Origin', 
+            value: process.env.NODE_ENV === "production" 
+              ? allowedOrigins.join(", ")
+              : "*" // Allow all in development
+          },
+          { key: 'Access-Control-Allow-Methods', value: 'GET,POST,PUT,DELETE,OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-OpenAI-API-Key' },
+          { key: 'Access-Control-Allow-Credentials', value: 'true' },
+        ],
+      },
+      // Apply security headers to all routes
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-XSS-Protection', value: '1; mode=block' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         ],
       },
     ];

@@ -16,11 +16,15 @@ export function verifyToken(authHeader: string | null): TokenPayload | null {
 
   const token = authHeader.substring(7);
 
+  // AUTH_SECRET must be set in production
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) {
+    console.error("❌ AUTH_SECRET is not set. Token verification will fail in production.");
+    return null;
+  }
+
   try {
-    const decoded = jwt.verify(
-      token,
-      process.env.AUTH_SECRET || "fallback_secret"
-    );
+    const decoded = jwt.verify(token, secret);
     return decoded as TokenPayload;
   } catch (error) {
     console.error("Token verification failed:", error);

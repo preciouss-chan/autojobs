@@ -7,6 +7,10 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { getServerSession } from "next-auth/next";
 import { prisma } from "./prisma";
 
+if (!process.env.AUTH_SECRET) {
+  console.warn("⚠️ AUTH_SECRET not set. This will cause issues in production. Please set AUTH_SECRET environment variable.");
+}
+
 if (!process.env.AUTH_GOOGLE_ID || !process.env.AUTH_GOOGLE_SECRET) {
   throw new Error("Missing Google OAuth credentials!");
 }
@@ -65,7 +69,7 @@ export const authOptions: AuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: false, // Set to false for localhost HTTP
+        secure: process.env.NODE_ENV === "production", // HTTPS only in production
       },
     },
     callbackUrl: {
@@ -73,7 +77,7 @@ export const authOptions: AuthOptions = {
       options: {
         sameSite: "lax",
         path: "/",
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
       },
     },
     csrfToken: {
@@ -82,7 +86,7 @@ export const authOptions: AuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
       },
     },
     pkceCodeVerifier: {
@@ -91,7 +95,7 @@ export const authOptions: AuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
       },
     },
   },

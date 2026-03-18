@@ -227,8 +227,8 @@ function DashboardContent() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-300 border-t-gray-600 mx-auto mb-4"></div>
+          <p className="text-gray-500 text-sm">Loading...</p>
         </div>
       </div>
     );
@@ -237,14 +237,14 @@ function DashboardContent() {
   if (status === "unauthenticated") {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full">
-          <h1 className="text-2xl font-bold mb-6 text-center">AutoJobs Dashboard</h1>
-          <p className="text-gray-600 mb-6 text-center">
+        <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-100 max-w-md w-full">
+          <h1 className="text-xl font-semibold mb-6 text-center text-gray-800">AutoJobs Dashboard</h1>
+          <p className="text-gray-500 text-sm mb-6 text-center">
             Sign in to manage your credits and purchase application packs
           </p>
           <button
             onClick={() => signIn("google")}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg"
+            className="w-full bg-gray-700 hover:bg-gray-800 text-white font-medium py-2 px-4 rounded-lg text-sm transition"
           >
             Sign in with Google
           </button>
@@ -255,94 +255,94 @@ function DashboardContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold">AutoJobs</h1>
+      <nav className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+          <h1 className="text-lg font-semibold text-gray-800">AutoJobs</h1>
           <button
             onClick={handleLogout}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-sm text-gray-600 hover:text-gray-800 transition"
           >
             Sign out
           </button>
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Payment Status Alert */}
-        {paymentStatus && (
-          <div
-            className={`mb-6 p-4 rounded-lg ${
-              paymentStatus === "success"
-                ? "bg-green-50 border border-green-200"
-                : "bg-yellow-50 border border-yellow-200"
-            }`}
-          >
-            <p
-              className={`text-sm font-medium ${
-                paymentStatus === "success"
-                  ? "text-green-800"
-                  : "text-yellow-800"
-              }`}
-            >
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+         {/* Payment Status Alert */}
+         {paymentStatus && (
+           <div
+             className={`mb-6 p-4 rounded-lg text-sm ${
+               paymentStatus === "success"
+                 ? "bg-green-50 border border-green-200 text-green-700"
+                 : "bg-yellow-50 border border-yellow-200 text-yellow-700"
+             }`}
+           >
+             <p
+               className={`text-sm font-medium ${
+                 paymentStatus === "success"
+                   ? "text-green-700"
+                   : "text-yellow-700"
+               }`}
+             >
               {paymentMessage}
             </p>
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Credits Card */}
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            <h2 className="text-2xl font-bold mb-4">Your Credits</h2>
-            <div className="mb-6">
-              <p className="text-gray-600 mb-2">Available Applications:</p>
-              <p className="text-5xl font-bold text-blue-600">{credits}</p>
-              <p className="text-gray-500 text-sm mt-2">1 credit = 1 job application</p>
-            </div>
-            <button
-              onClick={handleBuyCredits}
-              disabled={purchasing}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg transition"
-            >
-              {purchasing ? "Processing..." : "Buy 100 Credits for $2.49"}
-            </button>
-            <p className="text-xs text-gray-500 mt-3">
-              Uses Stripe test mode. Card: 4242 4242 4242 4242
-            </p>
-          </div>
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+           {/* Credits Card */}
+           <div className="bg-white rounded-lg border border-gray-100 p-6">
+             <h2 className="text-lg font-semibold mb-4 text-gray-800">Your Credits</h2>
+             <div className="mb-6">
+               <p className="text-gray-500 text-sm mb-2">Available Applications:</p>
+               <p className="text-4xl font-semibold text-gray-900">{credits}</p>
+               <p className="text-gray-500 text-xs mt-2">1 credit = 1 job application</p>
+             </div>
+             <button
+               onClick={handleBuyCredits}
+               disabled={purchasing}
+               className="w-full bg-gray-700 hover:bg-gray-800 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg text-sm transition"
+             >
+               {purchasing ? "Processing..." : "Buy 100 Credits for $2.49"}
+             </button>
+             <p className="text-xs text-gray-500 mt-3">
+               Uses Stripe test mode. Card: 4242 4242 4242 4242
+             </p>
+           </div>
 
-          {/* Account Info */}
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            <h2 className="text-2xl font-bold mb-4">Account Information</h2>
-            <div className="space-y-4">
-              <div>
-                <p className="text-gray-600 text-sm">Email</p>
-                <p className="font-semibold">{session?.user?.email}</p>
-              </div>
-              <div>
-                <p className="text-gray-600 text-sm">Name</p>
-                <p className="font-semibold">{session?.user?.name || "N/A"}</p>
-              </div>
-            </div>
-            <Link
-              href="/billing"
-              className="block mt-6 text-center bg-blue-100 hover:bg-blue-200 text-blue-600 font-semibold py-2 px-4 rounded-lg"
-            >
+           {/* Account Info */}
+           <div className="bg-white rounded-lg border border-gray-100 p-6">
+             <h2 className="text-lg font-semibold mb-4 text-gray-800">Account Information</h2>
+             <div className="space-y-4">
+               <div>
+                 <p className="text-gray-500 text-xs uppercase tracking-wide">Email</p>
+                 <p className="text-gray-700 text-sm">{session?.user?.email}</p>
+               </div>
+               <div>
+                 <p className="text-gray-500 text-xs uppercase tracking-wide">Name</p>
+                 <p className="text-gray-700 text-sm">{session?.user?.name || "N/A"}</p>
+               </div>
+             </div>
+             <Link
+               href="/billing"
+               className="block mt-6 text-center bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm py-2 px-4 rounded-lg transition"
+             >
               View Billing History
             </Link>
           </div>
         </div>
 
-        {/* Info Section */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mt-8">
-          <h3 className="text-lg font-bold text-blue-900 mb-2">How AutoJobs Works</h3>
-           <ul className="space-y-2 text-blue-800 text-sm">
-             <li>✓ Each application uses 1 credit</li>
-             <li>✓ Your resume is automatically tailored for each job</li>
-             <li>✓ A cover letter can be generated if needed</li>
-             <li>✓ Credits expire 1 year after purchase</li>
-             <li>✓ Your free starter credit never expires</li>
-           </ul>
-         </div>
+         {/* Info Section */}
+         <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mt-8">
+           <h3 className="text-base font-semibold text-gray-800 mb-3">How AutoJobs Works</h3>
+            <ul className="space-y-2 text-gray-600 text-sm">
+              <li className="flex items-start gap-2"><span className="text-gray-400">•</span> <span>Each application uses 1 credit</span></li>
+              <li className="flex items-start gap-2"><span className="text-gray-400">•</span> <span>Your resume is automatically tailored for each job</span></li>
+              <li className="flex items-start gap-2"><span className="text-gray-400">•</span> <span>A cover letter can be generated if needed</span></li>
+              <li className="flex items-start gap-2"><span className="text-gray-400">•</span> <span>Credits expire 1 year after purchase</span></li>
+              <li className="flex items-start gap-2"><span className="text-gray-400">•</span> <span>Your free starter credit never expires</span></li>
+            </ul>
+          </div>
        </main>
      </div>
    );
@@ -352,12 +352,12 @@ export default function Dashboard() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading...</p>
-          </div>
-        </div>
+         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+           <div className="text-center">
+             <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-300 border-t-gray-600 mx-auto mb-4"></div>
+             <p className="text-gray-500 text-sm">Loading...</p>
+           </div>
+         </div>
       }
     >
       <DashboardContent />

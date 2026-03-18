@@ -21,9 +21,10 @@ export const middleware = withAuth(
   }
 );
 
-// Protect dashboard route and other protected routes
+// Protect routes that require authentication
 export const config = {
   matcher: [
+    "/", // Tailor page - requires login
     "/dashboard",
     "/dashboard/:path*",
     "/billing",

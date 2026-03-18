@@ -336,11 +336,11 @@ function DashboardContent() {
          <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mt-8">
            <h3 className="text-base font-semibold text-gray-800 mb-3">How AutoJobs Works</h3>
             <ul className="space-y-2 text-gray-600 text-sm">
-              <li className="flex items-start gap-2"><span className="text-gray-400">•</span> <span>Each application uses 1 credit</span></li>
-              <li className="flex items-start gap-2"><span className="text-gray-400">•</span> <span>Your resume is automatically tailored for each job</span></li>
-              <li className="flex items-start gap-2"><span className="text-gray-400">•</span> <span>A cover letter can be generated if needed</span></li>
-              <li className="flex items-start gap-2"><span className="text-gray-400">•</span> <span>Credits expire 1 year after purchase</span></li>
-              <li className="flex items-start gap-2"><span className="text-gray-400">•</span> <span>Your free starter credit never expires</span></li>
+              <li>• Each application uses 1 credit</li>
+              <li>• Your resume is automatically tailored for each job</li>
+              <li>• A cover letter can be generated if needed</li>
+              <li>• Credits expire 1 year after purchase</li>
+              <li>• Your free starter credit never expires</li>
             </ul>
           </div>
        </main>

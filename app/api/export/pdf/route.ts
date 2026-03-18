@@ -161,32 +161,24 @@ export async function POST(req: Request): Promise<NextResponse> {
         }
       }
 
-      if (inputResume.education && inputResume.education.length > 0) {
-        estimatedHeight += 3 + 12 + 6; // Before + title + after section title
-        inputResume.education.forEach((edu, index) => {
-          doc.setFontSize(10);
-          const degreeText = `${edu.degree ?? ""} — ${edu.institution ?? ""}`;
-          const degreeLines = doc.splitTextToSize(degreeText, contentWidth) as string[];
-          estimatedHeight += degreeLines.length * lineHeightFor(10) + 6;
+       if (inputResume.education && inputResume.education.length > 0) {
+         estimatedHeight += 3 + 12 + 6; // Before + title + after section title
+         inputResume.education.forEach((edu, index) => {
+           doc.setFontSize(11);
+           const degreeText = `${edu.degree ?? ""} — ${edu.institution ?? ""}`;
+           const degreeLines = doc.splitTextToSize(degreeText, contentWidth - 100) as string[];
+           estimatedHeight += degreeLines.length * lineHeightFor(11) + 14; // 11pt for title line
 
-          const detailsArr: string[] = [];
-          if (edu.graduation_year) {
-            detailsArr.push(`Graduation: ${edu.graduation_year}`);
-          }
-          if (edu.gpa) {
-            detailsArr.push(`GPA: ${edu.gpa}`);
-          }
-          if (detailsArr.length > 0) {
-            doc.setFontSize(9);
-            const detailLines = doc.splitTextToSize(detailsArr.join(" • "), contentWidth) as string[];
-            estimatedHeight += detailLines.length * lineHeightFor(9) + 8;
-          }
+           if (edu.gpa) {
+             doc.setFontSize(10);
+             estimatedHeight += lineHeightFor(10) + 2; // GPA line
+           }
 
-          if (index < inputResume.education.length - 1) {
-            estimatedHeight += 8;
-          }
-        });
-      }
+           if (index < inputResume.education.length - 1) {
+             estimatedHeight += 8;
+           }
+         });
+       }
 
       return estimatedHeight;
     };
@@ -471,31 +463,47 @@ export async function POST(req: Request): Promise<NextResponse> {
        }
      }
 
-     // ===== EDUCATION =====
-      if (fittedResume.education && fittedResume.education.length > 0) {
-        checkPageBreak(40);
-        addSectionTitle("EDUCATION");
+      // ===== EDUCATION =====
+       if (fittedResume.education && fittedResume.education.length > 0) {
+         checkPageBreak(40);
+         addSectionTitle("EDUCATION");
 
-        fittedResume.education.forEach((edu, index) => {
-         const degree = edu.degree ?? "";
-         const institution = edu.institution ?? "";
-         const degreeText = `${degree} — ${institution}`;
-         addText(degreeText, 10, true, 6);
+         fittedResume.education.forEach((edu, index) => {
+          checkPageBreak(40);
 
-         const detailsArr = [];
-         if (edu.graduation_year) detailsArr.push(`Graduation: ${edu.graduation_year}`);
-         if (edu.gpa) detailsArr.push(`GPA: ${edu.gpa}`);
+          // Degree and institution (bold) with graduation year on right
+          setFontSize(11);
+          doc.setFont("helvetica", "bold");
+          const degree = edu.degree ?? "";
+          const institution = edu.institution ?? "";
+          const degreeText = `${degree} — ${institution}`;
+          
+          // Render degree/institution on left
+          (doc.text as any)(degreeText, margin, yPosition);
+          
+          // Render graduation year on right (right-aligned)
+          if (edu.graduation_year) {
+            setFontSize(11);
+            doc.setFont("helvetica", "normal");
+            (doc.text as any)(edu.graduation_year, pageWidth - margin, yPosition, { align: "right" });
+          }
+          
+          yPosition += 14;
 
-         if (detailsArr.length > 0) {
-           addText(detailsArr.join(" • "), 9, false, 8);
-         }
+          // GPA below if present
+          if (edu.gpa) {
+            setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            (doc.text as any)(`GPA: ${edu.gpa}`, margin, yPosition);
+            yPosition += 10 * 1.15 + 2;
+          }
 
-         // Add spacing between education entries
-          if (index < fittedResume.education.length - 1) {
-           yPosition += 8;
-         }
-       });
-     }
+          // Add spacing between education entries
+           if (index < fittedResume.education.length - 1) {
+            yPosition += 8;
+          }
+        });
+      }
 
     // Convert PDF to buffer
     const pdfBuffer = Buffer.from(doc.output("arraybuffer"));

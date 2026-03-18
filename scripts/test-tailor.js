@@ -110,8 +110,20 @@ async function testTailor() {
       );
     }
 
+    // Skills reframing
+    console.log("\n\n🎯 SKILL REFRAMING");
+    console.log("-".repeat(80));
+    if (tailoredData.skills_reframing?.length > 0) {
+      tailoredData.skills_reframing.forEach((item) => {
+        console.log(`  • [${item.category}] ${item.original} -> ${item.tailored}`);
+        console.log(`    Evidence: ${item.evidence}`);
+      });
+    } else {
+      console.log("  No reframing suggestions returned.");
+    }
+
     // Skills to add
-    console.log("\n\n🎯 SUGGESTED NEW SKILLS");
+    console.log("\n\n🎯 SUPPORTED SKILLS TO SURFACE");
     console.log("-".repeat(80));
     console.log("Current Skills:", resume.skills.languages.join(", "));
     if (tailoredData.skills_to_add?.languages?.length > 0) {

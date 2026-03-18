@@ -97,6 +97,16 @@ export const TailorResponseSchema = z.object({
   updated_summary: z.string(),
   project_edits: z.record(z.string(), z.array(z.string())).default({}),
   experience_edits: z.record(z.string(), z.array(z.string())).default({}),
+  skills_reframing: z
+    .array(
+      z.object({
+        category: z.enum(["languages", "frameworks_libraries", "tools", "experience"]),
+        original: z.string(),
+        tailored: z.string(),
+        evidence: z.string(),
+      })
+    )
+    .default([]),
   skills_to_add: z
     .object({
       languages: z.array(z.string()).default([]),

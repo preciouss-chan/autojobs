@@ -69,18 +69,18 @@ export async function POST(req: Request): Promise<NextResponse> {
        doc.setFontSize(size);
      };
 
-     const addSectionTitle = (title: string): void => {
-       yPosition += 6; // Space before section
-       setFontSize(12);
-       doc.setFont("helvetica", "bold");
-       (doc.text as any)(title, margin, yPosition);
-       yPosition += 12;
+      const addSectionTitle = (title: string): void => {
+        yPosition += 3; // Reduced from 6 to fit more content
+        setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        (doc.text as any)(title, margin, yPosition);
+        yPosition += 12;
 
-       // Add horizontal line with more margin
-       doc.setDrawColor(0);
-       doc.line(margin - 5, yPosition - 6, pageWidth - margin + 5, yPosition - 6);
-       yPosition += 10; // Increased from 2 to 10 for more spacing after section title
-     };
+        // Add horizontal line with more margin
+        doc.setDrawColor(0);
+        doc.line(margin - 5, yPosition - 6, pageWidth - margin + 5, yPosition - 6);
+        yPosition += 6; // Reduced from 10 to fit more content on one page
+      };
 
      const addText = (text: string, fontSize = 10, isBold = false, extraSpacing = 4): void => {
        setFontSize(fontSize);
@@ -105,34 +105,37 @@ export async function POST(req: Request): Promise<NextResponse> {
       let estimatedHeight = 34;
 
       if (inputResume.summary && inputResume.summary.trim().length > 0) {
+        doc.setFontSize(10);
         const summaryLines = doc.splitTextToSize(inputResume.summary, contentWidth) as string[];
-        estimatedHeight += 28 + summaryLines.length * lineHeightFor(10) + 8;
+        estimatedHeight += 9 + summaryLines.length * lineHeightFor(10) + 8; // 3 + 6 for spacing around section
       }
 
       if (inputResume.experience && inputResume.experience.length > 0) {
-        estimatedHeight += 28;
+        estimatedHeight += 3 + 12 + 6; // Before + title + after section title
         inputResume.experience.forEach((exp, index) => {
           estimatedHeight += 14;
           (exp.bullets ?? []).forEach((bullet) => {
+            doc.setFontSize(10);
             const lines = doc.splitTextToSize(`• ${bullet}`, contentWidth - 10) as string[];
             estimatedHeight += lines.length * lineHeightFor(10) + 2;
           });
           if (index < inputResume.experience.length - 1) {
-            estimatedHeight += 10;
+            estimatedHeight += 6; // Reduced from 10 to match new spacing
           }
         });
       }
 
       if (inputResume.projects && inputResume.projects.length > 0) {
-        estimatedHeight += 28;
+        estimatedHeight += 3 + 12 + 6; // Before + title + after section title
         inputResume.projects.forEach((proj, index) => {
           estimatedHeight += 14;
           (proj.bullets ?? []).forEach((bullet) => {
+            doc.setFontSize(10);
             const lines = doc.splitTextToSize(`• ${bullet}`, contentWidth - 10) as string[];
             estimatedHeight += lines.length * lineHeightFor(10) + 2;
           });
           if (index < inputResume.projects.length - 1) {
-            estimatedHeight += 10;
+            estimatedHeight += 6; // Reduced from 10 to match new spacing
           }
         });
       }
@@ -149,8 +152,9 @@ export async function POST(req: Request): Promise<NextResponse> {
           skillsArr.push(`Tools: ${inputResume.skills.tools.join(", ")}`);
         }
         if (skillsArr.length > 0) {
-          estimatedHeight += 28;
+          estimatedHeight += 3 + 12 + 6; // Before + title + after section title
           skillsArr.forEach((skillLine) => {
+            doc.setFontSize(10);
             const lines = doc.splitTextToSize(skillLine, contentWidth) as string[];
             estimatedHeight += lines.length * lineHeightFor(10) + 4;
           });
@@ -158,8 +162,9 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
 
       if (inputResume.education && inputResume.education.length > 0) {
-        estimatedHeight += 28;
+        estimatedHeight += 3 + 12 + 6; // Before + title + after section title
         inputResume.education.forEach((edu, index) => {
+          doc.setFontSize(10);
           const degreeText = `${edu.degree ?? ""} — ${edu.institution ?? ""}`;
           const degreeLines = doc.splitTextToSize(degreeText, contentWidth) as string[];
           estimatedHeight += degreeLines.length * lineHeightFor(10) + 6;
@@ -172,6 +177,7 @@ export async function POST(req: Request): Promise<NextResponse> {
             detailsArr.push(`GPA: ${edu.gpa}`);
           }
           if (detailsArr.length > 0) {
+            doc.setFontSize(9);
             const detailLines = doc.splitTextToSize(detailsArr.join(" • "), contentWidth) as string[];
             estimatedHeight += detailLines.length * lineHeightFor(9) + 8;
           }
@@ -385,10 +391,10 @@ export async function POST(req: Request): Promise<NextResponse> {
             });
          }
 
-         // Add spacing between experience entries
-          if (index < fittedResume.experience.length - 1) {
-           yPosition += 10;
-         }
+          // Add spacing between experience entries
+           if (index < fittedResume.experience.length - 1) {
+            yPosition += 6; // Reduced from 10 to fit more content
+          }
        });
      }
 
@@ -430,10 +436,10 @@ export async function POST(req: Request): Promise<NextResponse> {
             });
          }
 
-         // Add spacing between projects
-          if (index < fittedResume.projects.length - 1) {
-           yPosition += 10;
-         }
+          // Add spacing between projects
+           if (index < fittedResume.projects.length - 1) {
+            yPosition += 6; // Reduced from 10 to fit all projects on one page
+          }
        });
      }
 

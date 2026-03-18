@@ -31,8 +31,8 @@
       .header h2 {
         margin: 0;
         font-size: 16px;
-        font-weight: 500;
-        color: #374151;
+        font-weight: 600;
+        color: #0891b2;
       }
       
       .content {
@@ -46,7 +46,8 @@
         padding: 12px;
         margin-bottom: 12px;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        border: 1px solid #f0f1f3;
+        border: 1px solid #e0e7ff;
+        border-left: 3px solid #0891b2;
         transition: box-shadow 0.15s;
       }
       
@@ -56,8 +57,8 @@
       
       .card-title {
         font-size: 12px;
-        font-weight: 500;
-        color: #9ca3af;
+        font-weight: 600;
+        color: #0891b2;
         text-transform: none;
         letter-spacing: 0;
         margin-bottom: 8px;
@@ -102,7 +103,7 @@
       }
       
       #dashboardBtn, #generate {
-         background: #4b5563;
+         background: #0891b2;
          color: white;
          font-size: 14px;
          padding: 11px;
@@ -110,26 +111,26 @@
        }
        
        #dashboardBtn:hover, #generate:hover {
-         background: #5a6577;
+         background: #0e7490;
        }
       
       #uploadResume {
-        background: #7c9e8f;
+        background: #10b981;
         color: white;
       }
       
       #uploadCoverLetter {
-        background: #6b8fc4;
+        background: #3b82f6;
         color: white;
       }
       
       #previewResume {
-        background: #7c9e8f;
+        background: #10b981;
         color: white;
       }
       
       #previewCoverLetter {
-        background: #6b8fc4;
+        background: #3b82f6;
         color: white;
       }
       
@@ -172,7 +173,7 @@
         display: none;
         padding: 4px 10px;
         font-size: 11px;
-        background: #a8617a;
+        background: #ef4444;
         color: white;
         border-radius: 4px;
         width: auto;
@@ -181,7 +182,7 @@
       }
       
       #clearResume:hover {
-        background: #936b7f;
+        background: #dc2626;
       }
       
       .status {
@@ -195,15 +196,15 @@
       }
       
       .status.success {
-        background: #ecf5f1;
-        color: #2d5f52;
-        border: 1px solid #b8d4ca;
+        background: #ecfdf5;
+        color: #065f46;
+        border: 1px solid #6ee7b7;
       }
       
       .status.error {
-        background: #f4e8e8;
-        color: #6d4444;
-        border: 1px solid #d4a8a8;
+        background: #fef2f2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
       }
       
       .button-group {
@@ -239,15 +240,15 @@
       }
 
       .auth-message.warning {
-        background: #f5f1e8;
-        color: #6b5c45;
-        border: 1px solid #d4c9b4;
+        background: #fffbeb;
+        color: #92400e;
+        border: 1px solid #fcd34d;
       }
 
       .auth-message.error {
-        background: #f4e8e8;
-        color: #6d4444;
-        border: 1px solid #d4a8a8;
+        background: #fef2f2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
       }
     </style>
   </head>
@@ -257,11 +258,11 @@
       <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
         <h2 style="margin: 0;">Auto Apply AI</h2>
         <div style="display: flex; gap: 8px; align-items: center;">
-          <span id="creditDisplay" style="font-size: 11px; font-weight: 500; color: #7c8fa3; display: none;">
+          <span id="creditDisplay" style="font-size: 11px; font-weight: 500; color: #0891b2; display: none;">
              Credits: <span id="creditCount">-</span>
            </span>
-           <button id="loginBtn" style="padding: 5px 10px; font-size: 11px; background: #6b8fc4; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Login</button>
-           <button id="logoutBtn" style="padding: 5px 10px; font-size: 11px; background: #a8617a; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Logout</button>
+           <button id="loginBtn" style="padding: 5px 10px; font-size: 11px; background: #0891b2; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Login</button>
+           <button id="logoutBtn" style="padding: 5px 10px; font-size: 11px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Logout</button>
         </div>
       </div>
     </div>

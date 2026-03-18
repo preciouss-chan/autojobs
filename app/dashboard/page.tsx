@@ -237,14 +237,14 @@ function DashboardContent() {
   if (status === "unauthenticated") {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-100 max-w-md w-full">
-          <h1 className="text-xl font-semibold mb-6 text-center text-gray-800">AutoJobs Dashboard</h1>
-          <p className="text-gray-500 text-sm mb-6 text-center">
+           <div className="bg-white p-8 rounded-lg border border-gray-200 max-w-md w-full shadow-sm">
+          <h1 className="text-xl font-semibold mb-6 text-center text-cyan-600">AutoJobs Dashboard</h1>
+          <p className="text-gray-600 text-sm mb-6 text-center">
             Sign in to manage your credits and purchase application packs
           </p>
           <button
             onClick={() => signIn("google")}
-            className="w-full bg-gray-700 hover:bg-gray-800 text-white font-medium py-2 px-4 rounded-lg text-sm transition"
+            className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition"
           >
             Sign in with Google
           </button>
@@ -255,12 +255,12 @@ function DashboardContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-200">
+      <nav className="bg-white border-b-2 border-cyan-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
-          <h1 className="text-lg font-semibold text-gray-800">AutoJobs</h1>
+          <h1 className="text-lg font-semibold text-cyan-600">AutoJobs</h1>
           <button
             onClick={handleLogout}
-            className="text-sm text-gray-600 hover:text-gray-800 transition"
+            className="text-sm text-gray-600 hover:text-red-600 transition"
           >
             Sign out
           </button>
@@ -291,17 +291,17 @@ function DashboardContent() {
 
          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
            {/* Credits Card */}
-           <div className="bg-white rounded-lg border border-gray-100 p-6">
-             <h2 className="text-lg font-semibold mb-4 text-gray-800">Your Credits</h2>
+           <div className="bg-white rounded-lg border-l-4 border-l-cyan-600 border border-gray-200 p-6 shadow-sm">
+             <h2 className="text-lg font-semibold mb-4 text-cyan-600">Your Credits</h2>
              <div className="mb-6">
                <p className="text-gray-500 text-sm mb-2">Available Applications:</p>
-               <p className="text-4xl font-semibold text-gray-900">{credits}</p>
+               <p className="text-4xl font-bold text-cyan-600">{credits}</p>
                <p className="text-gray-500 text-xs mt-2">1 credit = 1 job application</p>
              </div>
              <button
                onClick={handleBuyCredits}
                disabled={purchasing}
-               className="w-full bg-gray-700 hover:bg-gray-800 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg text-sm transition"
+               className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg text-sm transition"
              >
                {purchasing ? "Processing..." : "Buy 100 Credits for $2.49"}
              </button>
@@ -311,21 +311,21 @@ function DashboardContent() {
            </div>
 
            {/* Account Info */}
-           <div className="bg-white rounded-lg border border-gray-100 p-6">
-             <h2 className="text-lg font-semibold mb-4 text-gray-800">Account Information</h2>
+           <div className="bg-white rounded-lg border-l-4 border-l-blue-500 border border-gray-200 p-6 shadow-sm">
+             <h2 className="text-lg font-semibold mb-4 text-blue-600">Account Information</h2>
              <div className="space-y-4">
                <div>
                  <p className="text-gray-500 text-xs uppercase tracking-wide">Email</p>
-                 <p className="text-gray-700 text-sm">{session?.user?.email}</p>
+                 <p className="text-gray-800 text-sm">{session?.user?.email}</p>
                </div>
                <div>
                  <p className="text-gray-500 text-xs uppercase tracking-wide">Name</p>
-                 <p className="text-gray-700 text-sm">{session?.user?.name || "N/A"}</p>
+                 <p className="text-gray-800 text-sm">{session?.user?.name || "N/A"}</p>
                </div>
              </div>
              <Link
                href="/billing"
-               className="block mt-6 text-center bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm py-2 px-4 rounded-lg transition"
+               className="block mt-6 text-center bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold text-sm py-2 px-4 rounded-lg transition"
              >
               View Billing History
             </Link>
@@ -333,9 +333,9 @@ function DashboardContent() {
         </div>
 
          {/* Info Section */}
-         <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mt-8">
-           <h3 className="text-base font-semibold text-gray-800 mb-3">How AutoJobs Works</h3>
-            <ul className="space-y-2 text-gray-600 text-sm">
+         <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-l-cyan-600 border border-cyan-200 rounded-lg p-6 mt-8">
+           <h3 className="text-base font-semibold text-cyan-800 mb-3">How AutoJobs Works</h3>
+            <ul className="space-y-2 text-gray-700 text-sm">
               <li>• Each application uses 1 credit</li>
               <li>• Your resume is automatically tailored for each job</li>
               <li>• A cover letter can be generated if needed</li>

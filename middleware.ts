@@ -22,11 +22,10 @@ export const middleware = withAuth(
 );
 
 // Protect routes that require authentication
+// Note: /dashboard is protected by layout.tsx server-side check instead
 export const config = {
   matcher: [
     "/", // Tailor page - requires login
-    "/dashboard",
-    "/dashboard/:path*",
     "/billing",
     "/billing/:path*",
   ],

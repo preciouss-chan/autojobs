@@ -21,6 +21,112 @@ const STORAGE_KEYS = {
   CREDITS: "user_credits"
 };
 
+function buildJobScraper() {
+  return () => {
+    const isVisible = (element) => {
+      if (!element) return false;
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.height > 0 && rect.width > 0;
+    };
+
+    const extractText = (element) => element?.innerText?.replace(/\s+/g, " ").trim() || "";
+
+    const pickBestText = (selectors, minimumLength = 20, scope = document) => {
+      const candidates = selectors.flatMap((selector) => Array.from(scope.querySelectorAll(selector)));
+      const scored = candidates
+        .map((element) => {
+          const text = extractText(element);
+          const visible = isVisible(element);
+          const containsKeySections = /qualifications|requirements|responsibilities|about the job/i.test(text);
+          return {
+            text,
+            visible,
+            score: text.length + (visible ? 2000 : 0) + (containsKeySections ? 500 : 0),
+          };
+        })
+        .filter((item) => item.text.length >= minimumLength)
+        .sort((left, right) => right.score - left.score);
+
+      return scored[0]?.text || "";
+    };
+
+    const siteContainers = [
+      ".jobs-search__job-details--container",
+      ".scaffold-layout__detail",
+      ".jobs-details",
+      ".jobsearch-ViewJobLayout-rightRail",
+      "#jobsearch-ViewjobPaneWrapper",
+      "main",
+    ]
+      .map((selector) => document.querySelector(selector))
+      .filter((element) => element && isVisible(element));
+
+    const scopedRoot = siteContainers[0] || document;
+
+    const jobTitle = pickBestText([
+      ".job-details-jobs-unified-top-card__job-title h1",
+      ".jobs-unified-top-card__job-title",
+      ".topcard__title",
+      ".jobsearch-JobInfoHeader-title",
+      "h1[data-testid='job-title']",
+      "h1",
+    ], 8, scopedRoot);
+
+    const company = pickBestText([
+      ".job-details-jobs-unified-top-card__company-name",
+      ".jobs-unified-top-card__company-name",
+      ".topcard__org-name-link",
+      ".jobsearch-InlineCompanyRating div:first-child",
+      "[data-testid='inlineHeader-companyName']",
+    ], 2, scopedRoot);
+
+    const description = pickBestText([
+      ".jobs-description-content__text",
+      ".jobs-box__html-content",
+      ".jobs-description__container",
+      ".jobs-description__content",
+      ".description__text",
+      ".jobsearch-JobComponent-description",
+      ".jobDescriptionContent",
+      "[data-testid='jobsearch-JobComponent-description']",
+      "#jobDescriptionText",
+      "article",
+    ], 120, scopedRoot);
+
+    const fallbackDescription = description || pickBestText([
+      ".jobs-description-content__text",
+      ".jobs-box__html-content",
+      ".jobs-description__container",
+      ".jobs-description__content",
+      ".description__text",
+      ".jobsearch-JobComponent-description",
+      ".jobDescriptionContent",
+      "[data-testid='jobsearch-JobComponent-description']",
+    ], 120, document);
+
+    const parts = [];
+    if (jobTitle) {
+      parts.push(`Job Title: ${jobTitle}`);
+    }
+    if (company) {
+      parts.push(`Company: ${company}`);
+    }
+    if (fallbackDescription) {
+      parts.push(fallbackDescription);
+    }
+
+    const finalText = parts.join("\n\n").trim();
+    if (finalText.length >= 120) {
+      return finalText;
+    }
+
+    return [jobTitle, company, document.title, window.location.href]
+      .filter(Boolean)
+      .join("\n") || "";
+  };
+}
+
 /**
  * Immediately check if session is still valid (used for instant logout detection)
  */
@@ -624,47 +730,29 @@ document.getElementById("openChatbot").addEventListener("click", async () => {
   // Get current tab to extract job description
   const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
   
-  // Try to get job description from storage or scrape it
+  // Try to scrape the current page first; only fall back to storage if scraping fails
   let jobDescription = "";
-  const stored = await browserAPI.storage.local.get(['lastJobDescription']);
-  if (stored.lastJobDescription) {
-    jobDescription = stored.lastJobDescription;
-  } else {
-    // Try to scrape it
-    try {
-      await browserAPI.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => {
-          window.__SCRAPE_JOB__ = () => {
-            const sels = [
-              ".jobs-description-content__text",
-              ".jobs-description__content",
-              ".description__text",
-              ".jobsearch-JobComponent-description",
-              ".jobDescriptionContent",
-              "article",
-              "main"
-            ];
-            for (const s of sels) {
-              const el = document.querySelector(s);
-              if (el && el.innerText.trim().length > 80) return el.innerText;
-            }
-            return document.body.innerText.slice(0, 3000);
-          };
-        },
+  try {
+    const [res] = await browserAPI.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: buildJobScraper(),
+    });
+    jobDescription = res?.result || "";
+
+    if (jobDescription && jobDescription.length >= 50) {
+      browserAPI.storage.local.set({
+        lastJobDescription: jobDescription,
+        lastJobDescriptionUrl: tab.url || "",
       });
-      
-      const [res] = await browserAPI.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => window.__SCRAPE_JOB__?.()
-      });
-      jobDescription = res?.result || "";
-      
-      if (jobDescription && jobDescription.length >= 50) {
-        browserAPI.storage.local.set({ lastJobDescription: jobDescription });
-      }
-    } catch (e) {
-      console.warn("Could not scrape job description:", e);
+    }
+  } catch (e) {
+    console.warn("Could not scrape job description:", e);
+  }
+
+  if (!jobDescription || jobDescription.length < 50) {
+    const stored = await browserAPI.storage.local.get(['lastJobDescription', 'lastJobDescriptionUrl']);
+    if (stored.lastJobDescription && stored.lastJobDescriptionUrl === (tab.url || "")) {
+      jobDescription = stored.lastJobDescription;
     }
   }
   
@@ -693,39 +781,18 @@ document.getElementById("generate").addEventListener("click", async () => {
 
   const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
 
-  // Inject scraper
-  await browserAPI.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: () => {
-      window.__SCRAPE_JOB__ = () => {
-        const sels = [
-          ".jobs-description-content__text",
-          ".jobs-description__content",
-          ".description__text",
-          ".jobsearch-JobComponent-description",
-          ".jobDescriptionContent",
-          "article",
-          "main"
-        ];
-        for (const s of sels) {
-          const el = document.querySelector(s);
-          if (el && el.innerText.trim().length > 80) return el.innerText;
-        }
-        return document.body.innerText.slice(0, 3000);
-      };
-    },
-  });
-
-  // Run scraper
   const [res] = await browserAPI.scripting.executeScript({
     target: { tabId: tab.id },
-    func: () => window.__SCRAPE_JOB__?.()
+    func: buildJobScraper()
   });
   const jobDescription = res?.result || "";
 
   // Store job description for chatbot
   if (jobDescription && jobDescription.length >= 50) {
-    browserAPI.storage.local.set({ lastJobDescription: jobDescription });
+    browserAPI.storage.local.set({
+      lastJobDescription: jobDescription,
+      lastJobDescriptionUrl: tab.url || "",
+    });
   }
 
   if (!jobDescription || jobDescription.length < 50) {

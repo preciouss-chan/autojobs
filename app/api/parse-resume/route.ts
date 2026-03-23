@@ -103,6 +103,7 @@ export async function POST(req: Request): Promise<NextResponse> {
      // Read PDF file as buffer
      const arrayBuffer = await file.arrayBuffer();
      const buffer = Buffer.from(arrayBuffer);
+     const uint8Array = new Uint8Array(buffer);
 
      if (
        typeof globalThis.DOMMatrix === "undefined" ||
@@ -120,10 +121,10 @@ export async function POST(req: Request): Promise<NextResponse> {
 
      const { PDFParse } = require("pdf-parse");
      
-      // Parse PDF and extract text
+     // Parse PDF and extract text
       let extractedText: string = "";
       try {
-        const parser = new PDFParse(buffer);
+        const parser = new PDFParse(uint8Array);
         await parser.load();
         const result = await parser.getText();
         extractedText = result.text || "";

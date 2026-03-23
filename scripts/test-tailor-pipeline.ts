@@ -47,6 +47,21 @@ function countWordsForTest(value: string): number {
   return value.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function countGenericPhrasesForTest(value: string): number {
+  const phrases = [
+    "i am writing to express my interest",
+    "i am excited about the opportunity",
+    "solid foundation",
+    "hands-on experience",
+    "eager to contribute",
+    "thank you for considering my application",
+    "i look forward to the opportunity",
+    "add value to your team",
+  ];
+  const normalized = value.toLowerCase();
+  return phrases.filter((phrase) => normalized.includes(phrase)).length;
+}
+
 const resume: Resume = {
   name: "Taylor Candidate",
   contact: {
@@ -221,6 +236,12 @@ function run(): void {
       "Dear Hiring Manager,\n\nThis is a longer first paragraph with enough words to simulate a realistic cover letter draft for testing purposes.\n\nThis second paragraph adds more supporting detail about projects, tools, and outcomes that are already supported by the resume content.\n\nThis third paragraph closes with motivation and contribution language.\n\nSincerely,\nPrecious Nyaupane"
     ) > 40,
     "word counting helper should treat realistic cover letter text as non-trivially long"
+  );
+  assert.ok(
+    countGenericPhrasesForTest(
+      "I am writing to express my interest and I am excited about the opportunity to add value to your team."
+    ) >= 2,
+    "generic phrase counting should flag boilerplate-heavy cover letter language"
   );
 
   console.log("All tailor pipeline assertions passed.");

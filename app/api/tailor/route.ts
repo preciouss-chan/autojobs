@@ -49,9 +49,24 @@ type TailoringDraft = {
 };
 
 const MIN_COVER_LETTER_WORDS = 180;
+const GENERIC_COVER_LETTER_PHRASES = [
+  "i am writing to express my interest",
+  "i am excited about the opportunity",
+  "solid foundation",
+  "hands-on experience",
+  "eager to contribute",
+  "thank you for considering my application",
+  "i look forward to the opportunity",
+  "add value to your team",
+];
 
 function countWords(value: string): number {
   return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function countGenericPhrases(value: string): number {
+  const normalized = value.toLowerCase();
+  return GENERIC_COVER_LETTER_PHRASES.filter((phrase) => normalized.includes(phrase)).length;
 }
 
 function sanitizeCoverLetter(rawText: string, candidateName: string): string {
@@ -81,6 +96,47 @@ function sanitizeCoverLetter(rawText: string, candidateName: string): string {
   }
 
   return `${normalized}\n\nSincerely,\n${candidateName}`;
+}
+
+async function polishCoverLetterTone(
+  client: OpenAI,
+  coverLetter: string,
+  resume: Resume,
+  signals: StructuredJobSignals,
+  candidateName: string
+): Promise<string> {
+  const companyName = signals.company_name?.trim();
+  const polishPrompt = `Rewrite this cover letter to sound more specific, human, and credible without changing the facts.
+
+Candidate resume evidence:
+${buildResumeEvidenceContext(resume)}
+
+Structured job signals:
+${JSON.stringify(signals, null, 2)}
+
+Current cover letter:
+${coverLetter}
+
+Rules:
+- Keep all claims truthful and grounded in the resume.
+- Keep the overall length roughly similar.
+- Keep exactly 3 body paragraphs before the closing.
+- Mention ${companyName || "the company"} naturally only if the company name is provided.
+- Avoid generic phrases like "I am writing to express my interest," "solid foundation," "hands-on experience," "eager to contribute," and "add value to your team."
+- Replace broad claims with concrete, resume-backed specifics.
+- End with exactly:
+Sincerely,
+${candidateName}
+
+Return only the full cover letter text.`;
+
+  const response = await client.chat.completions.create({
+    model: LLM_CONFIG.DEFAULTS.model,
+    messages: [{ role: "user", content: polishPrompt }],
+    temperature: LLM_CONFIG.DETERMINISTIC.temperature,
+  });
+
+  return sanitizeCoverLetter(response.choices[0]?.message?.content || coverLetter, candidateName);
 }
 
 function buildResumeEvidenceContext(resume: Resume): string {
@@ -311,6 +367,16 @@ Return only the full cover letter text.`;
 
     coverLetter = sanitizeCoverLetter(
       expandedResponse.choices[0]?.message?.content || coverLetter,
+      candidateName
+    );
+  }
+
+  if (countGenericPhrases(coverLetter) >= 2) {
+    coverLetter = await polishCoverLetterTone(
+      client,
+      coverLetter,
+      resume,
+      signals,
       candidateName
     );
   }

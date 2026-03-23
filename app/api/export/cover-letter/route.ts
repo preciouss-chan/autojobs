@@ -1,50 +1,16 @@
-import { exec } from "child_process";
-import { existsSync } from "fs";
-import { mkdtemp, readFile, writeFile } from "fs/promises";
 import { NextResponse } from "next/server";
-import os from "os";
-import path from "path";
-import { promisify } from "util";
+import { jsPDF } from "jspdf";
 
-const execAsync = promisify(exec);
+export const runtime = "nodejs";
 
-function escapeTex(s: string) {
-  if (!s) return "";
-  return s
-    .replace(/\\/g, "\\textbackslash{}")
-    .replace(/%/g, "\\%")
-    .replace(/&/g, "\\&")
-    .replace(/\$/g, "\\$")
-    .replace(/#/g, "\\#")
-    .replace(/_/g, "\\_")
-    .replace(/{/g, "\\{")
-    .replace(/}/g, "\\}")
-    .replace(/\^/g, "\\^{}")
-    .replace(/~/g, "\\~{}");
+function splitParagraphs(text: string): string[] {
+  return text
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0);
 }
 
-function buildCoverLetterTex(text: string) {
-  // Split text into paragraphs
-  const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
-  
-  const body = paragraphs
-    .map(p => escapeTex(p.trim()))
-    .join("\n\n");
-
-  return `
-\\documentclass[11pt,letterpaper]{article}
-\\usepackage[margin=1in]{geometry}
-\\usepackage{parskip}
-\\usepackage{fontspec}
-\\setmainfont{Helvetica}
-
-\\begin{document}
-${body}
-\\end{document}
-`;
-}
-
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<NextResponse> {
   try {
     const { text } = await req.json();
 
@@ -55,47 +21,50 @@ export async function POST(req: Request) {
       );
     }
 
-    // Convert text to LaTeX
-    const texSource = buildCoverLetterTex(text);
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "pt",
+      format: "letter",
+    });
 
-    // Create temp dir for building
-    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "cover-letter-"));
-    const texPath = path.join(tmpDir, "cover_letter.tex");
-    const pdfPath = path.join(tmpDir, "cover_letter.pdf");
-    const logPath = path.join(tmpDir, "cover_letter.log");
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 72;
+    const contentWidth = pageWidth - margin * 2;
+    const fontSize = 11;
+    const lineHeight = fontSize * 1.5;
+    const paragraphGap = 10;
+    let yPosition = margin;
 
-    // Write LaTeX file
-    await writeFile(texPath, texSource, "utf8");
+    doc.setFont("times", "normal");
+    doc.setFontSize(fontSize);
 
-    // Run XeLaTeX
-    try {
-      await execAsync(
-        `xelatex -interaction=nonstopmode -halt-on-error -output-directory="${tmpDir}" "${texPath}"`
-      );
-    } catch (err) {
-      console.warn("XeLaTeX returned a non-zero exit code — continuing anyway...");
+    const paragraphs = splitParagraphs(text);
+
+    for (const paragraph of paragraphs) {
+      const lines = doc.splitTextToSize(paragraph, contentWidth) as string[];
+      const paragraphHeight = lines.length * lineHeight;
+
+      if (yPosition + paragraphHeight > pageHeight - margin) {
+        doc.addPage();
+        yPosition = margin;
+        doc.setFont("times", "normal");
+        doc.setFontSize(fontSize);
+      }
+
+      (doc.text as any)(lines, margin, yPosition);
+      yPosition += paragraphHeight + paragraphGap;
     }
 
-    // If PDF doesn't exist → error
-    if (!existsSync(pdfPath)) {
-      return NextResponse.json(
-        { error: "LaTeX failed to generate a PDF", details: "No PDF file produced." },
-        { status: 500 }
-      );
-    }
+    const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
 
-    // Load PDF buffer
-    const pdf = await readFile(pdfPath);
-
-    // Send PDF back
-    return new NextResponse(pdf, {
+    return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": 'attachment; filename="cover_letter.pdf"',
       },
     });
-
   } catch (err: any) {
     console.error("COVER_LETTER_PDF ERROR:", err);
     return NextResponse.json(
@@ -104,6 +73,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
-
-

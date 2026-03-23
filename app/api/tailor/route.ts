@@ -208,11 +208,108 @@ function sanitizeCompanyName(value: string): string {
     .trim();
 }
 
+function uniqTerms(values: string[]): string[] {
+  return Array.from(
+    new Map(
+      values
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => [value.toLowerCase(), value])
+    ).values()
+  );
+}
+
+function extractSectionLines(jobDescription: string, headings: string[]): string[] {
+  const lines = jobDescription.split(/\r?\n/);
+  const normalizedHeadings = headings.map((heading) => heading.toLowerCase());
+  const results: string[] = [];
+  let inSection = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const normalized = line.toLowerCase().replace(/[:\-]+$/, "");
+
+    const startsTargetSection = normalizedHeadings.some((heading) => normalized === heading);
+    const startsNewSection =
+      /^[a-z][a-z\s/&-]{2,40}:?$/i.test(line) &&
+      !line.startsWith("-") &&
+      !line.startsWith("*") &&
+      !/^\d+\./.test(line);
+
+    if (startsTargetSection) {
+      inSection = true;
+      continue;
+    }
+
+    if (inSection && startsNewSection) {
+      break;
+    }
+
+    if (!inSection) {
+      continue;
+    }
+
+    if (!line) {
+      continue;
+    }
+
+    results.push(line.replace(/^[-*•]\s*/, "").replace(/^\d+\.\s*/, ""));
+  }
+
+  return results;
+}
+
+function extractQualificationSectionTerms(jobDescription: string): {
+  minimum: string[];
+  preferred: string[];
+} {
+  const minimumLines = extractSectionLines(jobDescription, [
+    "minimum qualifications",
+    "basic qualifications",
+    "required qualifications",
+    "requirements",
+  ]);
+  const preferredLines = extractSectionLines(jobDescription, [
+    "preferred qualifications",
+    "preferred skills",
+    "nice to have",
+    "bonus qualifications",
+  ]);
+
+  const splitTerms = (lines: string[]): string[] => {
+    const terms: string[] = [];
+    for (const line of lines) {
+      const cleaned = line
+        .replace(/^experience with\s+/i, "")
+        .replace(/^proficiency in\s+/i, "")
+        .replace(/^knowledge of\s+/i, "")
+        .replace(/^ability to\s+/i, "")
+        .replace(/^familiarity with\s+/i, "")
+        .replace(/\.$/, "");
+
+      const parts = cleaned.split(/,|\band\b|\bor\b|\//i).map((part) => part.trim());
+      for (const part of parts) {
+        if (part.length < 3) {
+          continue;
+        }
+        terms.push(part);
+      }
+    }
+    return uniqTerms(terms);
+  };
+
+  return {
+    minimum: splitTerms(minimumLines),
+    preferred: splitTerms(preferredLines),
+  };
+}
+
 async function extractStructuredJobSignals(
   client: OpenAI,
   jobDescription: string,
   jobRequirements?: JobRequirements
 ): Promise<StructuredJobSignals> {
+  const qualificationTerms = extractQualificationSectionTerms(jobDescription);
   const prompt = `Extract structured hiring signals from this job description.
 
 ${buildRequirementsContext(jobRequirements)}
@@ -227,6 +324,8 @@ Return only valid JSON with this exact shape:
   "seniority_signals": [""],
   "required_skills": [""],
   "preferred_skills": [""],
+  "minimum_qualification_keywords": [""],
+  "preferred_qualification_keywords": [""],
   "tools_technologies": [""],
   "responsibilities": [""],
   "domain_keywords": [""],
@@ -238,15 +337,24 @@ Rules:
 - Only extract requirements explicitly stated or strongly implied.
 - Keep phrases short and ATS-friendly.
 - Put optional or bonus skills only in preferred_skills.
+- Heavily weight the minimum qualifications and preferred qualifications sections when extracting keywords.
+- minimum_qualification_keywords should capture important ATS terms from required/basic/minimum qualifications.
+- preferred_qualification_keywords should capture important ATS terms from preferred/nice-to-have qualifications.
 - tools_technologies should contain named tools, platforms, frameworks, libraries, and databases.
 - responsibilities should be action-oriented phrases.
 - domain_keywords should describe industry/problem-space terms.
 - company_name should be the employer name if it is identifiable from the description, otherwise "".
 - Do not invent requirements.`;
 
+  const qualificationContext = `
+
+Detected qualification-section hints from the raw posting:
+- Minimum/basic qualifications terms: ${qualificationTerms.minimum.join(", ") || "none detected"}
+- Preferred qualifications terms: ${qualificationTerms.preferred.join(", ") || "none detected"}`;
+
   const response = await client.chat.completions.create({
     model: LLM_CONFIG.DEFAULTS.model,
-    messages: [{ role: "user", content: prompt }],
+    messages: [{ role: "user", content: `${prompt}${qualificationContext}` }],
     temperature: LLM_CONFIG.DETERMINISTIC.temperature,
     response_format: { type: "json_object" },
   });
@@ -256,6 +364,24 @@ Rules:
   return {
     ...validated,
     company_name: sanitizeCompanyName(validated.company_name),
+    required_skills: uniqTerms([
+      ...validated.required_skills,
+      ...validated.minimum_qualification_keywords,
+      ...qualificationTerms.minimum,
+    ]),
+    preferred_skills: uniqTerms([
+      ...validated.preferred_skills,
+      ...validated.preferred_qualification_keywords,
+      ...qualificationTerms.preferred,
+    ]),
+    minimum_qualification_keywords: uniqTerms([
+      ...validated.minimum_qualification_keywords,
+      ...qualificationTerms.minimum,
+    ]),
+    preferred_qualification_keywords: uniqTerms([
+      ...validated.preferred_qualification_keywords,
+      ...qualificationTerms.preferred,
+    ]),
   };
 }
 

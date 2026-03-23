@@ -223,6 +223,8 @@ function collectSignalTerms(signals: StructuredJobSignals): string[] {
     signals.company_name,
     ...signals.required_skills,
     ...signals.preferred_skills,
+    ...signals.minimum_qualification_keywords,
+    ...signals.preferred_qualification_keywords,
     ...signals.tools_technologies,
     ...signals.responsibilities,
     ...signals.domain_keywords,
@@ -236,8 +238,10 @@ function collectPriorityKeywords(signals: StructuredJobSignals): string[] {
   return uniq([
     signals.title,
     ...signals.required_skills,
+    ...signals.minimum_qualification_keywords,
     ...signals.tools_technologies,
     ...signals.preferred_skills.slice(0, 4),
+    ...signals.preferred_qualification_keywords.slice(0, 4),
   ]).filter((term) => normalizeTerm(term).length > 1);
 }
 
@@ -521,11 +525,18 @@ function inferProfessionalSkills(resume: Resume, signals: StructuredJobSignals):
   const jobProfessionalTerms = uniq([
     ...signals.required_skills,
     ...signals.preferred_skills,
+    ...signals.minimum_qualification_keywords,
+    ...signals.preferred_qualification_keywords,
     ...signals.responsibilities,
   ]).filter((term) => !KNOWN_TECH_TERMS.includes(normalizeTerm(term)));
 
   jobProfessionalTerms.forEach((term) => {
     if (termSupported(term, collectResumeEvidenceTerms(resume))) {
+      inferred.add(titleCaseLabel(term));
+      return;
+    }
+
+    if (tokenOverlapScore(text, [term]) >= 0.5) {
       inferred.add(titleCaseLabel(term));
       return;
     }
@@ -688,7 +699,13 @@ export function inferSupportedSkillsToAdd(
   };
 
   collectProjectTechnologyTerms(resume, signals).forEach(maybeAdd);
-  [...signals.required_skills, ...signals.tools_technologies, ...signals.preferred_skills].forEach(maybeAdd);
+  [
+    ...signals.required_skills,
+    ...signals.minimum_qualification_keywords,
+    ...signals.tools_technologies,
+    ...signals.preferred_skills,
+    ...signals.preferred_qualification_keywords,
+  ].forEach(maybeAdd);
   inferProfessionalSkills(resume, signals).forEach((skill) => {
     const normalized = normalizeTerm(skill);
     if (!normalized || existingSkills.has(normalized)) {

@@ -75,6 +75,8 @@ export const StructuredJobSignalsSchema = z.object({
   seniority_signals: z.array(z.string()).default([]),
   required_skills: z.array(z.string()).default([]),
   preferred_skills: z.array(z.string()).default([]),
+  minimum_qualification_keywords: z.array(z.string()).default([]),
+  preferred_qualification_keywords: z.array(z.string()).default([]),
   tools_technologies: z.array(z.string()).default([]),
   responsibilities: z.array(z.string()).default([]),
   domain_keywords: z.array(z.string()).default([]),

@@ -117,6 +117,8 @@ const signals: StructuredJobSignals = {
   seniority_signals: ["mid-level"],
   required_skills: ["TypeScript", "React"],
   preferred_skills: ["A/B testing"],
+  minimum_qualification_keywords: ["REST APIs", "Cross-functional collaboration"],
+  preferred_qualification_keywords: ["Experimentation"],
   tools_technologies: ["Next.js", "PostgreSQL", "Docker"],
   responsibilities: ["build user-facing features", "improve onboarding flows"],
   domain_keywords: ["product", "experimentation"],
@@ -168,6 +170,10 @@ function run(): void {
   assert.ok(
     skillsToAdd.professional_skills.some((item) => item.toLowerCase() === "teamwork"),
     "supported soft skills should be surfaced into a dedicated professional skills category"
+  );
+  assert.ok(
+    skillsToAdd.professional_skills.some((item) => item.toLowerCase() === "cross-functional collaboration"),
+    "minimum qualification keywords should be considered when surfacing supported professional skills"
   );
   assert.ok(
     missingKeywords.some((item) => item.keyword === "Docker"),

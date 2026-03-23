@@ -46,9 +46,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 72;
     const contentWidth = pageWidth - margin * 2;
-    const fontSize = 11;
-    const lineHeight = fontSize * 1.5;
-    const paragraphGap = 8;
+    const fontSize = 12;
+    const lineHeight = fontSize * 1.4;
+    const paragraphGap = 5;
     const closingGap = 4;
     let yPosition = margin;
 

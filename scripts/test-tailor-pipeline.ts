@@ -28,6 +28,8 @@ function sanitizeCoverLetterForTest(rawText: string, candidateName: string): str
 
   let normalized = paragraphs.join("\n\n");
 
+  normalized = normalized.replace(/^(dear hiring manager,?\s*)+/i, "").trim();
+
   normalized = normalized
     .replace(/\n{3,}/g, "\n\n")
     .replace(
@@ -40,7 +42,7 @@ function sanitizeCoverLetterForTest(rawText: string, candidateName: string): str
     normalized = "Thank you for considering my application.";
   }
 
-  return `${normalized}\n\nSincerely,\n${candidateName}`;
+  return `Dear Hiring Manager,\n\n${normalized}\n\nSincerely,\n${candidateName}`;
 }
 
 function countWordsForTest(value: string): number {
@@ -227,6 +229,11 @@ function run(): void {
     cleanedCoverLetter,
     "Dear Hiring Manager,\n\nBody paragraph here.\n\nSincerely,\nPrecious Nyaupane",
     "cover letter sanitizer should collapse duplicate sign-offs into one canonical closing"
+  );
+  assert.equal(
+    sanitizeCoverLetterForTest("Body paragraph here.", "Precious Nyaupane").startsWith("Dear Hiring Manager,"),
+    true,
+    "cover letter sanitizer should always add the required Dear Hiring Manager greeting"
   );
 
   assert.equal(signals.company_name, "Acme Labs", "structured job signals should carry the company name for cover letter personalization");

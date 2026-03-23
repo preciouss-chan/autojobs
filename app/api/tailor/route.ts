@@ -83,6 +83,8 @@ function sanitizeCoverLetter(rawText: string, candidateName: string): string {
 
   let normalized = paragraphs.join("\n\n");
 
+  normalized = normalized.replace(/^(dear hiring manager,?\s*)+/i, "").trim();
+
   normalized = normalized
     .replace(/\n{3,}/g, "\n\n")
     .replace(
@@ -95,7 +97,7 @@ function sanitizeCoverLetter(rawText: string, candidateName: string): string {
     normalized = "Thank you for considering my application.";
   }
 
-  return `${normalized}\n\nSincerely,\n${candidateName}`;
+  return `Dear Hiring Manager,\n\n${normalized}\n\nSincerely,\n${candidateName}`;
 }
 
 async function polishCoverLetterTone(
@@ -106,7 +108,7 @@ async function polishCoverLetterTone(
   candidateName: string
 ): Promise<string> {
   const companyName = signals.company_name?.trim();
-  const polishPrompt = `Rewrite this cover letter to sound more specific, human, and credible without changing the facts.
+  const polishPrompt = `Rewrite this cover letter to sound more natural, human, and specific without changing the facts.
 
 Candidate resume evidence:
 ${buildResumeEvidenceContext(resume)}
@@ -121,9 +123,12 @@ Rules:
 - Keep all claims truthful and grounded in the resume.
 - Keep the overall length roughly similar.
 - Keep exactly 3 body paragraphs before the closing.
+- Start with exactly: Dear Hiring Manager,
 - Mention ${companyName || "the company"} naturally only if the company name is provided.
 - Avoid generic phrases like "I am writing to express my interest," "solid foundation," "hands-on experience," "eager to contribute," and "add value to your team."
 - Replace broad claims with concrete, resume-backed specifics.
+- Loosen the tone slightly so it reads like a thoughtful person wrote it, not a formal template.
+- Prefer direct, grounded language over lofty phrasing like "resonates with me," "pioneering role," or "global commerce" unless the sentence feels natural.
 - End with exactly:
 Sincerely,
 ${candidateName}
@@ -302,10 +307,13 @@ Non-negotiable rules:
 - If a company name is provided, mention ${companyName || "the employer"} naturally in the opening or closing so the letter feels specific to that application.
 - If no company name is provided, do not invent one.
 - Make the cover letter 3 paragraphs and roughly 220-320 words.
+- Start the cover letter with exactly: Dear Hiring Manager,
 - Paragraph 1: specific interest in the role and why this company/team is compelling.
 - Paragraph 2: one concrete, relevant example from experience or projects with technologies and outcomes already supported by the resume.
 - Paragraph 3: a second relevant strength, plus a forward-looking closing about how you would contribute.
 - Avoid generic filler like "I am writing to express my interest" or "I am excited about the opportunity" unless the sentence contains real specifics.
+- Keep the tone warm, direct, and confident rather than overly formal or grandiose.
+- Use natural phrasing a strong candidate would actually send.
 - End the cover letter with exactly:
   Sincerely,
   ${candidateName}
@@ -352,7 +360,9 @@ Requirements:
 - Mention ${companyName || "the company"} naturally only if supported by the extracted company name.
 - Expand to roughly 220-320 words.
 - Keep exactly 3 paragraphs before the closing.
+- Start with exactly: Dear Hiring Manager,
 - Add more specificity, detail, and motivation; do not add fake achievements.
+- Keep the tone natural and personal rather than stiff or ceremonial.
 - End with exactly:
 Sincerely,
 ${candidateName}

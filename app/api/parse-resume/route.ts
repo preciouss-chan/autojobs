@@ -104,6 +104,24 @@ export async function POST(req: Request): Promise<NextResponse> {
      const arrayBuffer = await file.arrayBuffer();
      const buffer = Buffer.from(arrayBuffer);
 
+     if (
+       typeof globalThis.DOMMatrix === "undefined" ||
+       typeof globalThis.ImageData === "undefined" ||
+       typeof globalThis.Path2D === "undefined"
+     ) {
+       const { DOMMatrix, ImageData, Path2D } = require("@napi-rs/canvas");
+
+       if (typeof globalThis.DOMMatrix === "undefined") {
+         globalThis.DOMMatrix = DOMMatrix;
+       }
+       if (typeof globalThis.ImageData === "undefined") {
+         globalThis.ImageData = ImageData;
+       }
+       if (typeof globalThis.Path2D === "undefined") {
+         globalThis.Path2D = Path2D;
+       }
+     }
+
      // Use the simpler parser variant that already works in repo scripts
      const PDFParser = require("pdf-parse/lib/pdf-parse.js");
      

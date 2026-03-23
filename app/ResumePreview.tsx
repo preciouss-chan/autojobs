@@ -7,6 +7,14 @@ interface ResumePreviewProps {
 }
 
 export default function ResumePreview({ resume }: ResumePreviewProps): React.ReactElement {
+  const formatGraduationLabel = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    return /expected|graduat/i.test(trimmed) ? trimmed : `Expected ${trimmed}`;
+  };
 
   return (
     <div className="max-w-4xl mx-auto bg-white p-8 text-sm leading-normal print:p-6 font-sans">
@@ -149,17 +157,20 @@ export default function ResumePreview({ resume }: ResumePreviewProps): React.Rea
           <div className="space-y-2">
             {resume.education.map((edu, i) => (
               <div key={i}>
-                <div className="flex justify-between items-baseline">
-                  <div className="font-semibold text-sm">
-                    {edu.degree} — {edu.institution}
+                <div className="flex justify-between items-start gap-4">
+                  <div>
+                    <div className="font-semibold text-sm">{edu.degree}</div>
+                    <div className="text-sm">{edu.institution}</div>
                   </div>
-                  {edu.graduation_year && <span className="text-xs text-gray-600 ml-2 flex-shrink-0">{edu.graduation_year}</span>}
+                  <div className="text-right text-xs text-gray-600 flex-shrink-0">
+                    {edu.graduation_year && (
+                      <div>{formatGraduationLabel(edu.graduation_year)}</div>
+                    )}
+                    {edu.gpa && (
+                      <div>GPA: {edu.gpa}</div>
+                    )}
+                  </div>
                 </div>
-                {edu.gpa && (
-                  <div className="text-xs text-gray-600">
-                    GPA: {edu.gpa}
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -168,4 +179,3 @@ export default function ResumePreview({ resume }: ResumePreviewProps): React.Rea
     </div>
   ) as React.ReactElement;
 }
-

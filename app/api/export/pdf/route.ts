@@ -5,6 +5,15 @@ import type { Resume } from "@/app/lib/schemas";
 
 export const runtime = "nodejs";
 
+function formatGraduationLabel(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return /expected|graduat/i.test(trimmed) ? trimmed : `Expected ${trimmed}`;
+}
+
 function normalizeSkillValue(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -471,35 +480,32 @@ export async function POST(req: Request): Promise<NextResponse> {
          fittedResume.education.forEach((edu, index) => {
           checkPageBreak(40);
 
-          // Degree and institution (bold) with graduation year on right
+          // Degree and institution on left, graduation/GPA on right
           setFontSize(11);
           doc.setFont("helvetica", "bold");
-          const degree = edu.degree ?? "";
-          const institution = edu.institution ?? "";
-          const degreeText = `${degree} — ${institution}`;
-          
-          // Render degree/institution on left
-          (doc.text as any)(degreeText, margin, yPosition);
-          
-          // Render graduation year on right (right-aligned)
+          (doc.text as any)(edu.degree ?? "", margin, yPosition);
+
           if (edu.graduation_year) {
             setFontSize(11);
             doc.setFont("helvetica", "normal");
-            (doc.text as any)(edu.graduation_year, pageWidth - margin, yPosition, { align: "right" });
+            (doc.text as any)(formatGraduationLabel(edu.graduation_year), pageWidth - margin, yPosition, { align: "right" });
           }
-          
+
           yPosition += 14;
 
-          // GPA below if present
+          setFontSize(11);
+          doc.setFont("helvetica", "normal");
+          (doc.text as any)(edu.institution ?? "", margin, yPosition);
+
           if (edu.gpa) {
             setFontSize(10);
             doc.setFont("helvetica", "normal");
-            (doc.text as any)(`GPA: ${edu.gpa}`, margin, yPosition);
-            yPosition += 10 * 1.15 + 2;
+            (doc.text as any)(`GPA: ${edu.gpa}`, pageWidth - margin, yPosition, { align: "right" });
           }
 
-          // Add spacing between education entries
-           if (index < fittedResume.education.length - 1) {
+          yPosition += 10 * 1.15 + 2;
+
+          if (index < fittedResume.education.length - 1) {
             yPosition += 8;
           }
         });

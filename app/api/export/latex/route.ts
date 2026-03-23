@@ -16,6 +16,12 @@ function escapeTex(s: string) {
     .replace(/~/g, "\\~{}");
 }
 
+function formatGraduationLabel(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return /expected|graduat/i.test(trimmed) ? trimmed : `Expected ${trimmed}`;
+}
+
 /* ---------------------- TEX BUILDER ---------------------- */
 function buildTex(resume: any) {
   const header = `
@@ -70,8 +76,10 @@ function buildTex(resume: any) {
   if (resume.education?.length) {
     body += `\\section*{Education}\n`;
     resume.education.forEach((ed: any) => {
-      body += `\\textbf{${escapeTex(ed.degree)}} --- ${escapeTex(ed.institution)} \\hfill ${escapeTex(ed.graduation_year || "")} \\\\ \n`;
-      if (ed.gpa) body += `GPA: ${escapeTex(ed.gpa)} \\\\ \n`;
+      body += `\\textbf{${escapeTex(ed.degree)}} \\hfill ${escapeTex(formatGraduationLabel(ed.graduation_year || ""))} \\\\ \n`;
+      body += `${escapeTex(ed.institution || "")}`;
+      if (ed.gpa) body += ` \\hfill GPA: ${escapeTex(ed.gpa)}`;
+      body += ` \\\\ \n`;
     });
     body += "\n";
   }
@@ -118,4 +126,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

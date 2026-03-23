@@ -47,6 +47,30 @@ type TailoringDraft = {
   cover_letter: string;
 };
 
+function sanitizeCoverLetter(rawText: string, candidateName: string): string {
+  const cleaned = rawText
+    .replace(/\[your name\]/gi, candidateName)
+    .replace(/your name/gi, candidateName)
+    .replace(/\r/g, "")
+    .trim();
+
+  const paragraphs = cleaned
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const normalized = paragraphs.join("\n\n");
+  const hasClosing = /sincerely,?$/im.test(normalized) || /best,?$/im.test(normalized);
+  const hasName = new RegExp(candidateName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(normalized);
+
+  if (hasClosing && hasName) {
+    return normalized;
+  }
+
+  const withoutDanglingClosing = normalized.replace(/\n\n?(sincerely,?|best,?)\s*$/i, "").trim();
+  return `${withoutDanglingClosing}\n\nSincerely,\n${candidateName}`;
+}
+
 function buildResumeEvidenceContext(resume: Resume): string {
   const lines: string[] = [];
 
@@ -147,6 +171,7 @@ async function generateTailoringDraft(
   signals: StructuredJobSignals,
   selectedBullets: ReturnType<typeof selectBulletsForRewrite>
 ): Promise<TailoringDraft> {
+  const candidateName = resume.name?.trim() || "Candidate";
   const bulletInventory = selectedBullets.map((bullet) => ({
     id: bullet.id,
     section: bullet.section,
@@ -174,6 +199,8 @@ Tasks:
 2. Update the summary in 2-3 sentences so it is specific, truthful, and ATS-friendly.
 3. Write a concise, specific cover letter.
 
+Candidate name for the signature: ${candidateName}
+
 Non-negotiable rules:
 - Do not add new tools, technologies, metrics, achievements, responsibilities, or industries.
 - Do not add a keyword unless that exact idea is already supported by the same bullet or the resume summary.
@@ -182,6 +209,10 @@ Non-negotiable rules:
 - Prefer minimal edits, stronger action verbs, and clearer outcomes.
 - If a bullet is already strong, return it unchanged.
 - Keep the output clean and ATS-friendly.
+- End the cover letter with exactly:
+  Sincerely,
+  ${candidateName}
+- Never use placeholders like [Your Name], [Name], or Candidate Name.
 
 Return only valid JSON with this shape:
 {
@@ -208,7 +239,7 @@ Return only valid JSON with this shape:
   return {
     updated_summary: String(parsed.updated_summary || "").trim(),
     bullet_rewrites: Array.isArray(parsed.bullet_rewrites) ? parsed.bullet_rewrites : [],
-    cover_letter: String(parsed.cover_letter || "").trim(),
+    cover_letter: sanitizeCoverLetter(String(parsed.cover_letter || "").trim(), candidateName),
   };
 }
 

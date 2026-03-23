@@ -6,8 +6,23 @@ export const runtime = "nodejs";
 function splitParagraphs(text: string): string[] {
   return text
     .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.trim())
+    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim())
     .filter((paragraph) => paragraph.length > 0);
+}
+
+function normalizeCoverLetterText(text: string): string[] {
+  const cleaned = text.replace(/\r/g, "").trim();
+  const signoffMatch = cleaned.match(/([\s\S]*?)(?:\n\s*\n)?(Sincerely,?|Best,?)\s*\n+(.+)$/i);
+
+  if (!signoffMatch) {
+    return splitParagraphs(cleaned);
+  }
+
+  const body = splitParagraphs(signoffMatch[1]);
+  const closing = signoffMatch[2].replace(/\s+/g, " ").trim();
+  const name = signoffMatch[3].replace(/\s+/g, " ").trim();
+
+  return [...body, closing, name];
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -33,15 +48,16 @@ export async function POST(req: Request): Promise<NextResponse> {
     const contentWidth = pageWidth - margin * 2;
     const fontSize = 11;
     const lineHeight = fontSize * 1.5;
-    const paragraphGap = 10;
+    const paragraphGap = 8;
+    const closingGap = 4;
     let yPosition = margin;
 
     doc.setFont("times", "normal");
     doc.setFontSize(fontSize);
 
-    const paragraphs = splitParagraphs(text);
+    const paragraphs = normalizeCoverLetterText(text);
 
-    for (const paragraph of paragraphs) {
+    for (const [index, paragraph] of paragraphs.entries()) {
       const lines = doc.splitTextToSize(paragraph, contentWidth) as string[];
       const paragraphHeight = lines.length * lineHeight;
 
@@ -52,8 +68,13 @@ export async function POST(req: Request): Promise<NextResponse> {
         doc.setFontSize(fontSize);
       }
 
-      (doc.text as any)(lines, margin, yPosition);
-      yPosition += paragraphHeight + paragraphGap;
+      doc.text(lines, margin, yPosition);
+      const isClosingLine = /^(Sincerely,?|Best,?|Thanks,?)$/i.test(paragraph);
+      yPosition += paragraphHeight + (isClosingLine ? closingGap : paragraphGap);
+
+      if (index === paragraphs.length - 2 && isClosingLine) {
+        yPosition -= 1;
+      }
     }
 
     const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
@@ -65,10 +86,13 @@ export async function POST(req: Request): Promise<NextResponse> {
         "Content-Disposition": 'attachment; filename="cover_letter.pdf"',
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("COVER_LETTER_PDF ERROR:", err);
     return NextResponse.json(
-      { error: "PDF generation failed", details: err.message },
+      {
+        error: "PDF generation failed",
+        details: err instanceof Error ? err.message : String(err),
+      },
       { status: 500 }
     );
   }

@@ -116,7 +116,7 @@ async function sendMessage() {
   
   try {
     // Get backend URL (should match background.js)
-    const backendUrl = "http://localhost:3000"; // Update this to match your hosted backend
+    const backendUrl = "https://autojobs-bice.vercel.app";
     
     const response = await fetch(`${backendUrl}/api/chat`, {
       method: 'POST',
@@ -208,4 +208,3 @@ function removeLoadingMessage(id) {
     loading.remove();
   }
 }
-

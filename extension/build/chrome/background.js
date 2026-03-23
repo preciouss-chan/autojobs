@@ -4,7 +4,7 @@ import { mergeResume } from "../utils/mergeResume.js";
 // Backend URL - update this to your hosted backend URL
 // For local development, use: "http://localhost:3000"
 // For production, use your deployed backend URL
-const BASE_URL = "http://localhost:3000"; // Change this to your hosted backend URL
+const BASE_URL = "https://autojobs-bice.vercel.app";
 
 console.log("🔥 Background worker loaded.");
 
@@ -381,4 +381,3 @@ function arrayBufferToBase64(buffer) {
   }
   return btoa(binary);
 }
-

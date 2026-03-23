@@ -2,6 +2,14 @@
 
 const statusEl = document.getElementById("status");
 
+async function getAuthToken() {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get(["auth_token"], (result) => {
+      resolve(result?.auth_token || null);
+    });
+  });
+}
+
 document.getElementById("resumeFile").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -22,14 +30,22 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     // Get API key from settings
     const apiKeySettings = await chrome.storage.sync.get(['openaiApiKey']);
     const apiKey = apiKeySettings.openaiApiKey;
+    const authToken = await getAuthToken();
+
+    if (!authToken) {
+      throw new Error("Not authenticated. Please sign in from the extension first.");
+    }
 
     // Get backend URL from settings or use default
     const settings = await chrome.storage.sync.get(['backendUrl']);
-    const backendUrl = settings.backendUrl || "http://localhost:3000";
+    const backendUrl = settings.backendUrl || "https://autojobs-bice.vercel.app";
     
     const response = await fetch(`${backendUrl}/api/parse-resume`, {
       method: "POST",
-      headers: apiKey ? { "X-OpenAI-API-Key": apiKey } : {},
+      headers: {
+        ...(apiKey ? { "X-OpenAI-API-Key": apiKey } : {}),
+        "Authorization": `Bearer ${authToken}`
+      },
       body: formData
     });
 

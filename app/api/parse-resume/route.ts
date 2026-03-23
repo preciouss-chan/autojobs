@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getUserId, verifyToken } from "@/lib/token";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
 import { ResumeSchema, ErrorResponseSchema } from "@/app/lib/schemas";
 import { LLM_CONFIG } from "@/app/lib/llm-config";
@@ -13,20 +14,24 @@ const PARSE_RESUME_CREDIT_COST = 5;
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
-    // Require authentication
+    const authHeader = req.headers.get("Authorization");
+    const tokenPayload = verifyToken(authHeader);
     const session = await auth();
-    if (!session || !session.user?.email) {
+    const sessionUserId = (session?.user as any)?.id;
+    const userId = getUserId(authHeader, sessionUserId);
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = (session.user as any)?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "User ID not found" }, { status: 401 });
+    const userEmail = tokenPayload?.email || session?.user?.email;
+    if (!userEmail) {
+      return NextResponse.json({ error: "User email not found" }, { status: 401 });
     }
 
     // Apply rate limiting per user
     const rateLimitResult = checkRateLimit(
-      session.user.email,
+      userEmail,
       "parse-resume",
       RATE_LIMIT_PRESETS.PARSE_RESUME.limit,
       RATE_LIMIT_PRESETS.PARSE_RESUME.windowMs
@@ -282,4 +287,3 @@ Extract all information accurately. If a field is not present, use an empty stri
     );
   }
 }
-

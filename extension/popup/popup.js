@@ -1001,8 +1001,16 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     const formData = new FormData();
     formData.append("file", file);
 
+    const authToken = await getAuthToken();
+    if (!authToken) {
+      throw new Error("Not authenticated. Please sign in from the extension first.");
+    }
+
     const response = await fetchWithTimeout(`${BACKEND_URL}/api/parse-resume`, {
       method: "POST",
+      headers: {
+        Authorization: `Bearer ${authToken}`
+      },
       body: formData
     }, API_TIMEOUTS.PARSE);
 

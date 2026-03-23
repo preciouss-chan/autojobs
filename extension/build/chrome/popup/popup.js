@@ -289,7 +289,7 @@ document.getElementById("previewCoverLetter").addEventListener("click", async ()
       const coverLetterText = new TextDecoder().decode(bytes);
       
       // Use backend URL (update in background.js when deploying)
-      const backendUrl = "http://localhost:3000"; // Update this to match your hosted backend
+      const backendUrl = "https://autojobs-bice.vercel.app";
       
       // Convert to PDF using backend
       const response = await fetch(`${backendUrl}/api/export/cover-letter`, {
@@ -439,10 +439,18 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     formData.append("file", file);
 
     // Use backend URL (update when deploying)
-    const backendUrl = "http://localhost:3000"; // Update this to match your hosted backend
+    const backendUrl = "https://autojobs-bice.vercel.app";
     
+    const authToken = await getAuthToken();
+    if (!authToken) {
+      throw new Error("Not authenticated. Please sign in from the extension first.");
+    }
+
     const response = await fetch(`${backendUrl}/api/parse-resume`, {
       method: "POST",
+      headers: {
+        "Authorization": `Bearer ${authToken}`
+      },
       body: formData
     });
 
@@ -496,7 +504,7 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     
     // Provide more helpful error messages
     if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
-      errorMessage = "Cannot connect to server. Make sure the Next.js server is running on http://localhost:3000";
+      errorMessage = "Cannot connect to server. Make sure the production server is running at https://autojobs-bice.vercel.app";
     } else if (errorMessage.includes("non-JSON response")) {
       errorMessage = "Server error. Check that the server is running and the /api/parse-resume endpoint exists.";
     }

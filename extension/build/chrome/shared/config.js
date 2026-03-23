@@ -1,5 +1,4 @@
 // shared/config.js
-// Update this URL to your hosted backend
-export const BACKEND_URL = "https://your-backend-domain.com";
-
+// Production backend URL
+export const BACKEND_URL = "https://autojobs-bice.vercel.app";
 

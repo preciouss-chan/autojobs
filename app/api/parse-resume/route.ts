@@ -106,10 +106,9 @@ export async function POST(req: Request): Promise<NextResponse> {
 
      if (
        typeof globalThis.DOMMatrix === "undefined" ||
-       typeof globalThis.ImageData === "undefined" ||
-       typeof globalThis.Path2D === "undefined"
+       typeof globalThis.ImageData === "undefined"
      ) {
-       const { DOMMatrix, ImageData, Path2D } = require("@napi-rs/canvas");
+       const { DOMMatrix, ImageData } = require("canvas");
 
        if (typeof globalThis.DOMMatrix === "undefined") {
          globalThis.DOMMatrix = DOMMatrix;
@@ -117,18 +116,16 @@ export async function POST(req: Request): Promise<NextResponse> {
        if (typeof globalThis.ImageData === "undefined") {
          globalThis.ImageData = ImageData;
        }
-       if (typeof globalThis.Path2D === "undefined") {
-         globalThis.Path2D = Path2D;
-       }
      }
 
-     // Use the simpler parser variant that already works in repo scripts
-     const PDFParser = require("pdf-parse/lib/pdf-parse.js");
+     const { PDFParse } = require("pdf-parse");
      
       // Parse PDF and extract text
       let extractedText: string = "";
       try {
-        const result = await PDFParser(buffer);
+        const parser = new PDFParse(buffer);
+        await parser.load();
+        const result = await parser.getText();
         extractedText = result.text || "";
       } catch (pdfErr) {
         console.error("PDF parsing failed:", pdfErr);

@@ -67,6 +67,58 @@ export const JobRequirementsSchema = z.object({
 
 export type JobRequirements = z.infer<typeof JobRequirementsSchema>;
 
+export const StructuredJobSignalsSchema = z.object({
+  title: z.string().default(""),
+  seniority_signals: z.array(z.string()).default([]),
+  required_skills: z.array(z.string()).default([]),
+  preferred_skills: z.array(z.string()).default([]),
+  tools_technologies: z.array(z.string()).default([]),
+  responsibilities: z.array(z.string()).default([]),
+  domain_keywords: z.array(z.string()).default([]),
+  years_experience: z.number().nullable().default(null),
+  team_focus: z.string().default(""),
+});
+
+export type StructuredJobSignals = z.infer<typeof StructuredJobSignalsSchema>;
+
+export const ResumeBulletAnalysisSchema = z.object({
+  id: z.string(),
+  section: z.enum(["experience", "projects"]),
+  section_label: z.string(),
+  index: z.number().int().nonnegative(),
+  original_text: z.string(),
+  detected_keywords: z.array(z.string()).default([]),
+  domain_category: z.string().default("general"),
+  has_metrics: z.boolean().default(false),
+  has_achievement: z.boolean().default(false),
+  score: z.number().default(0),
+  decision: z.enum(["rewrite", "keep"]),
+  reasons: z.array(z.string()).default([]),
+});
+
+export type ResumeBulletAnalysis = z.infer<typeof ResumeBulletAnalysisSchema>;
+
+export const ChangedBulletSchema = z.object({
+  id: z.string(),
+  section: z.enum(["experience", "projects"]),
+  section_label: z.string(),
+  index: z.number().int().nonnegative(),
+  original: z.string(),
+  revised: z.string(),
+  matched_signals: z.array(z.string()).default([]),
+  reason: z.string().default(""),
+});
+
+export type ChangedBullet = z.infer<typeof ChangedBulletSchema>;
+
+export const MissingKeywordSchema = z.object({
+  keyword: z.string(),
+  category: z.enum(["required_skill", "preferred_skill", "tool", "responsibility", "domain"]),
+  reason: z.string(),
+});
+
+export type MissingKeyword = z.infer<typeof MissingKeywordSchema>;
+
 // API Request schemas
 export const ParseResumeRequestSchema = z.object({
   file: z.instanceof(File),
@@ -78,7 +130,7 @@ export const ExtractRequirementsRequestSchema = z.object({
 
 export const TailorRequestSchema = z.object({
   jobDescription: z.string().min(1, "Job description cannot be empty"),
-  resume: ResumeSchema,
+  resume: ResumeSchema.optional(),
   jobRequirements: JobRequirementsSchema.optional(),
 });
 
@@ -114,6 +166,12 @@ export const TailorResponseSchema = z.object({
       tools: z.array(z.string()).default([]),
     })
     .default(() => ({ languages: [], frameworks_libraries: [], tools: [] })),
+  job_signals: StructuredJobSignalsSchema,
+  bullet_analysis: z.array(ResumeBulletAnalysisSchema).default([]),
+  changed_bullets: z.array(ChangedBulletSchema).default([]),
+  missing_keywords: z.array(MissingKeywordSchema).default([]),
+  improvement_notes: z.array(z.string()).default([]),
+  revised_resume_text: z.string().default(""),
   cover_letter: z.string(),
 });
 

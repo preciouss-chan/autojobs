@@ -8,6 +8,10 @@ import resumeData from "@/data/resume.json";
 import { useState } from "react";
 import type { JobRequirements, Resume, TailorResponse } from "@/app/lib/schemas";
 
+type ApiError = {
+  error: string;
+};
+
 export const dynamic = "force-dynamic";
 
 export default function TailorPage(): React.ReactElement {
@@ -40,6 +44,10 @@ export default function TailorPage(): React.ReactElement {
     return input;
   }
 
+  function isApiError(value: unknown): value is ApiError {
+    return typeof value === "object" && value !== null && "error" in value;
+  }
+
   async function handleExtractRequirements(): Promise<void> {
     setExtracting(true);
     setRequirements(null);
@@ -58,9 +66,9 @@ export default function TailorPage(): React.ReactElement {
         body: JSON.stringify({ jobDescription: jobText }),
       });
 
-      const data = (await response.json()) as JobRequirements;
-      if ("error" in data) {
-        addToast("error", `Extraction failed: ${(data as any).error}`);
+      const data = (await response.json()) as JobRequirements | ApiError;
+      if (isApiError(data)) {
+        addToast("error", `Extraction failed: ${data.error}`);
       } else {
         setRequirements(data);
         addToast("success", "Job requirements extracted successfully!");
@@ -363,12 +371,12 @@ export default function TailorPage(): React.ReactElement {
                 <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm">
                   {result.skills_to_add &&
                   Object.values(result.skills_to_add).some(
-                    (arr: any) => arr && arr.length > 0
+                    (arr: string[]) => arr.length > 0
                   ) ? (
                     <div className="space-y-2">
                       {Object.entries(result.skills_to_add).map(
-                        ([category, items]: any) =>
-                          items && items.length > 0 ? (
+                        ([category, items]: [string, string[]]) =>
+                          items.length > 0 ? (
                             <div key={category}>
                               <span className="font-semibold capitalize">
                                 {category}:
@@ -382,6 +390,59 @@ export default function TailorPage(): React.ReactElement {
                     <p className="text-gray-500">
                       No additional skills suggested.
                     </p>
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <h2 className="text-xl font-semibold">What Improved</h2>
+                <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm">
+                  {result.improvement_notes.length > 0 ? (
+                    <ul className="list-disc ml-5 space-y-1">
+                      {result.improvement_notes.map((note) => (
+                        <li key={note}>{note}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-gray-500">No improvement notes returned.</p>
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <h2 className="text-xl font-semibold">Changed Bullets</h2>
+                <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm space-y-4">
+                  {result.changed_bullets.length > 0 ? (
+                    result.changed_bullets.map((item) => (
+                      <div key={item.id} className="border-b border-gray-200 pb-3 last:border-b-0 last:pb-0">
+                        <p className="font-semibold text-gray-900">
+                          {item.section_label} - bullet {item.index + 1}
+                        </p>
+                        <p className="text-gray-600 mt-1">Original: {item.original}</p>
+                        <p className="text-gray-900 mt-1">Revised: {item.revised}</p>
+                        <p className="text-xs text-gray-500 mt-1">{item.reason}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-500">No bullet rewrites were accepted.</p>
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <h2 className="text-xl font-semibold">Missing Keywords / Gaps</h2>
+                <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm">
+                  {result.missing_keywords.length > 0 ? (
+                    <ul className="space-y-2">
+                      {result.missing_keywords.map((gap) => (
+                        <li key={`${gap.category}-${gap.keyword}`}>
+                          <span className="font-semibold">{gap.keyword}</span>
+                          {` - ${gap.reason}`}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-gray-500">No unsupported gaps were identified.</p>
                   )}
                 </div>
               </section>

@@ -105,12 +105,6 @@ async function sendMessage() {
   const apiKeyResult = await chrome.storage.sync.get(['openaiApiKey']);
   const apiKey = apiKeyResult.openaiApiKey;
   
-  if (!apiKey) {
-    removeLoadingMessage(loadingId);
-    addMessage('assistant', 'Error: OpenAI API key not set. Please configure it in extension settings.');
-    return;
-  }
-  
   // Add to chat history
   chatHistory.push({ role: 'user', content: message });
   
@@ -122,7 +116,7 @@ async function sendMessage() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-OpenAI-API-Key': apiKey
+        ...(apiKey ? { 'X-OpenAI-API-Key': apiKey } : {})
       },
       body: JSON.stringify({
         message: message,

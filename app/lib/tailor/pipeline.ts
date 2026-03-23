@@ -1,0 +1,818 @@
+import type {
+  ChangedBullet,
+  MissingKeyword,
+  Resume,
+  ResumeBulletAnalysis,
+  StructuredJobSignals,
+  TailorResponse,
+} from "@/app/lib/schemas";
+
+type ResumeSection = "experience" | "projects";
+
+type ResumeBulletRecord = {
+  id: string;
+  section: ResumeSection;
+  sectionLabel: string;
+  index: number;
+  originalText: string;
+  normalizedText: string;
+  detectedKeywords: string[];
+  domainCategory: string;
+  hasMetrics: boolean;
+  hasAchievement: boolean;
+  sectionWeight: number;
+  recencyWeight: number;
+  score: number;
+  reasons: string[];
+};
+
+type SelectedBullet = ResumeBulletRecord & {
+  matchedSignals: string[];
+};
+
+type AcceptedRewrite = {
+  id: string;
+  revised: string;
+  reason: string;
+  matchedSignals: string[];
+};
+
+type RewriteMap = Record<string, { revised: string; reason?: string; matched_signals?: string[] }>;
+
+const SECTION_WEIGHTS: Record<ResumeSection, number> = {
+  experience: 1.2,
+  projects: 1,
+};
+
+const COMMON_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "in",
+  "into",
+  "is",
+  "of",
+  "on",
+  "or",
+  "that",
+  "the",
+  "to",
+  "with",
+  "using",
+  "use",
+  "used",
+  "you",
+  "your",
+  "our",
+  "their",
+  "team",
+  "teams",
+  "work",
+  "role",
+  "roles",
+  "experience",
+  "responsible",
+  "responsibility",
+]);
+
+const TECH_ALIASES: Record<string, string> = {
+  js: "javascript",
+  ts: "typescript",
+  node: "nodejs",
+  "node.js": "nodejs",
+  "react.js": "react",
+  "next.js": "nextjs",
+  nextjs: "nextjs",
+  postgres: "postgresql",
+  postgresql: "postgresql",
+  aws: "amazon web services",
+  ai: "artificial intelligence",
+  ml: "machine learning",
+  llm: "large language models",
+  apis: "api",
+};
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+export function normalizeTerm(value: string): string {
+  const normalized = normalizeWhitespace(value)
+    .toLowerCase()
+    .replace(/[()]/g, "")
+    .replace(/[^a-z0-9+#./\-\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return TECH_ALIASES[normalized] || normalized;
+}
+
+function tokenize(value: string): string[] {
+  return normalizeTerm(value)
+    .split(/\s+/)
+    .filter((token) => token.length > 1 && !COMMON_STOPWORDS.has(token));
+}
+
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function extractMetricTokens(text: string): string[] {
+  return uniq(text.match(/\b\d[\d.,]*(?:%|x|\+)?\b/g) ?? []);
+}
+
+function hasMetrics(text: string): boolean {
+  return extractMetricTokens(text).length > 0;
+}
+
+function hasAchievementLanguage(text: string): boolean {
+  return /\b(increased|reduced|improved|launched|delivered|generated|optimized|scaled|automated|boosted|saved|grew|accelerated|led|built|developed|designed|implemented)\b/i.test(text);
+}
+
+function estimateRecencyWeight(dates: string): number {
+  if (!dates.trim()) {
+    return 0.5;
+  }
+
+  const currentYear = new Date().getFullYear();
+  if (/present|current/i.test(dates)) {
+    return 1;
+  }
+
+  const years = dates.match(/\b(20\d{2}|19\d{2})\b/g)?.map((value) => Number(value)) ?? [];
+  const latestYear = years.length > 0 ? Math.max(...years) : null;
+
+  if (!latestYear) {
+    return 0.55;
+  }
+
+  const delta = currentYear - latestYear;
+  if (delta <= 1) {
+    return 0.95;
+  }
+  if (delta <= 3) {
+    return 0.8;
+  }
+  if (delta <= 5) {
+    return 0.65;
+  }
+  return 0.45;
+}
+
+function collectSignalTerms(signals: StructuredJobSignals): string[] {
+  return uniq([
+    ...signals.required_skills,
+    ...signals.preferred_skills,
+    ...signals.tools_technologies,
+    ...signals.responsibilities,
+    ...signals.domain_keywords,
+    ...signals.seniority_signals,
+    signals.title,
+    signals.team_focus,
+  ]);
+}
+
+function phraseMatches(text: string, phrases: string[]): string[] {
+  const normalizedText = normalizeTerm(text);
+  return uniq(
+    phrases.filter((phrase) => {
+      const normalizedPhrase = normalizeTerm(phrase);
+      return normalizedPhrase.length > 1 && normalizedText.includes(normalizedPhrase);
+    })
+  );
+}
+
+function tokenOverlapScore(text: string, phrases: string[]): number {
+  const textTokens = new Set(tokenize(text));
+  const phraseTokens = uniq(phrases.flatMap((phrase) => tokenize(phrase)));
+
+  if (textTokens.size === 0 || phraseTokens.length === 0) {
+    return 0;
+  }
+
+  let overlap = 0;
+  for (const token of phraseTokens) {
+    if (textTokens.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  return overlap / phraseTokens.length;
+}
+
+function detectDomainCategory(text: string, signals: StructuredJobSignals): string {
+  const matches = phraseMatches(text, signals.domain_keywords);
+  if (matches.length > 0) {
+    return matches[0];
+  }
+
+  const toolMatch = phraseMatches(text, signals.tools_technologies);
+  if (toolMatch.length > 0) {
+    return toolMatch[0];
+  }
+
+  return signals.team_focus || "general";
+}
+
+function deriveDetectedKeywords(text: string, signals: StructuredJobSignals): string[] {
+  const exactMatches = phraseMatches(text, collectSignalTerms(signals));
+  const tokenMatches = collectSignalTerms(signals).filter((term) => {
+    const termTokens = tokenize(term);
+    if (termTokens.length === 0) {
+      return false;
+    }
+
+    const textTokens = new Set(tokenize(text));
+    return termTokens.some((token) => textTokens.has(token));
+  });
+
+  return uniq([...exactMatches, ...tokenMatches]).slice(0, 8);
+}
+
+function buildBulletId(section: ResumeSection, label: string, index: number): string {
+  return `${section}:${label}:${index}`;
+}
+
+function scoreBullet(text: string, signals: StructuredJobSignals, section: ResumeSection, dates: string): {
+  score: number;
+  reasons: string[];
+  matchedSignals: string[];
+} {
+  const matchedSignals = deriveDetectedKeywords(text, signals);
+  const requiredMatches = phraseMatches(text, signals.required_skills);
+  const toolMatches = phraseMatches(text, signals.tools_technologies);
+  const responsibilityMatches = phraseMatches(text, signals.responsibilities);
+  const semanticScore = tokenOverlapScore(text, collectSignalTerms(signals));
+  const recencyWeight = estimateRecencyWeight(dates);
+  const sectionWeight = SECTION_WEIGHTS[section];
+
+  let score = requiredMatches.length * 3;
+  score += toolMatches.length * 2;
+  score += responsibilityMatches.length * 1.5;
+  score += semanticScore * 4;
+  score += sectionWeight;
+  score += recencyWeight;
+
+  const reasons: string[] = [];
+  if (requiredMatches.length > 0) {
+    reasons.push(`matches required skills: ${requiredMatches.join(", ")}`);
+  }
+  if (toolMatches.length > 0) {
+    reasons.push(`aligns with tools: ${toolMatches.join(", ")}`);
+  }
+  if (responsibilityMatches.length > 0) {
+    reasons.push(`supports responsibilities: ${responsibilityMatches.join(", ")}`);
+  }
+  if (semanticScore >= 0.2) {
+    reasons.push("strong overall relevance to the job signals");
+  }
+  if (recencyWeight >= 0.8) {
+    reasons.push("comes from recent experience");
+  }
+
+  return {
+    score: Number(score.toFixed(2)),
+    reasons,
+    matchedSignals,
+  };
+}
+
+export function parseResumeForTailoring(
+  resume: Resume,
+  signals: StructuredJobSignals
+): ResumeBulletRecord[] {
+  const records: ResumeBulletRecord[] = [];
+
+  for (const exp of resume.experience) {
+    exp.bullets.forEach((bullet, index) => {
+      const scored = scoreBullet(bullet, signals, "experience", exp.dates);
+      records.push({
+        id: buildBulletId("experience", exp.company, index),
+        section: "experience",
+        sectionLabel: exp.company,
+        index,
+        originalText: bullet,
+        normalizedText: normalizeTerm(bullet),
+        detectedKeywords: scored.matchedSignals,
+        domainCategory: detectDomainCategory(bullet, signals),
+        hasMetrics: hasMetrics(bullet),
+        hasAchievement: hasAchievementLanguage(bullet),
+        sectionWeight: SECTION_WEIGHTS.experience,
+        recencyWeight: estimateRecencyWeight(exp.dates),
+        score: scored.score,
+        reasons: scored.reasons,
+      });
+    });
+  }
+
+  for (const project of resume.projects) {
+    project.bullets.forEach((bullet, index) => {
+      const scored = scoreBullet(bullet, signals, "projects", project.date);
+      records.push({
+        id: buildBulletId("projects", project.name, index),
+        section: "projects",
+        sectionLabel: project.name,
+        index,
+        originalText: bullet,
+        normalizedText: normalizeTerm(bullet),
+        detectedKeywords: scored.matchedSignals,
+        domainCategory: detectDomainCategory(bullet, signals),
+        hasMetrics: hasMetrics(bullet),
+        hasAchievement: hasAchievementLanguage(bullet),
+        sectionWeight: SECTION_WEIGHTS.projects,
+        recencyWeight: estimateRecencyWeight(project.date),
+        score: scored.score,
+        reasons: scored.reasons,
+      });
+    });
+  }
+
+  return records.sort((left, right) => right.score - left.score);
+}
+
+export function buildBulletAnalysis(records: ResumeBulletRecord[]): ResumeBulletAnalysis[] {
+  const topThreshold = records.length > 0 ? Math.max(records[0].score * 0.45, 2.6) : 2.6;
+
+  return records.map((record, index) => ({
+    id: record.id,
+    section: record.section,
+    section_label: record.sectionLabel,
+    index: record.index,
+    original_text: record.originalText,
+    detected_keywords: record.detectedKeywords,
+    domain_category: record.domainCategory,
+    has_metrics: record.hasMetrics,
+    has_achievement: record.hasAchievement,
+    score: record.score,
+    decision: index < 6 && record.score >= topThreshold && record.detectedKeywords.length > 0 ? "rewrite" : "keep",
+    reasons: record.reasons,
+  }));
+}
+
+export function selectBulletsForRewrite(records: ResumeBulletRecord[]): SelectedBullet[] {
+  const analysis = buildBulletAnalysis(records);
+
+  return analysis
+    .filter((item) => item.decision === "rewrite")
+    .map((item) => {
+      const record = records.find((candidate) => candidate.id === item.id);
+      if (!record) {
+        return null;
+      }
+
+      return {
+        ...record,
+        matchedSignals: item.detected_keywords,
+      };
+    })
+    .filter((value): value is SelectedBullet => value !== null);
+}
+
+function collectResumeEvidenceTerms(resume: Resume): Set<string> {
+  const terms = new Set<string>();
+  const addTokens = (value: string): void => {
+    tokenize(value).forEach((token) => terms.add(token));
+    const normalized = normalizeTerm(value);
+    if (normalized) {
+      terms.add(normalized);
+    }
+  };
+
+  if (resume.summary) {
+    addTokens(resume.summary);
+  }
+
+  resume.skills.languages.forEach(addTokens);
+  resume.skills.frameworks_libraries.forEach(addTokens);
+  resume.skills.tools.forEach(addTokens);
+
+  resume.experience.forEach((exp) => {
+    addTokens(exp.role);
+    addTokens(exp.company);
+    exp.bullets.forEach(addTokens);
+  });
+
+  resume.projects.forEach((project) => {
+    addTokens(project.name);
+    project.bullets.forEach(addTokens);
+  });
+
+  return terms;
+}
+
+function collectSignalTokenSet(signals: StructuredJobSignals): Set<string> {
+  return new Set(collectSignalTerms(signals).flatMap((term) => tokenize(term)));
+}
+
+function containsUnsupportedSignalTokens(
+  original: string,
+  revised: string,
+  signalTokens: Set<string>
+): boolean {
+  const originalTokens = new Set(tokenize(original));
+  const revisedTokens = tokenize(revised);
+
+  const newlyAdded = revisedTokens.filter((token) => !originalTokens.has(token));
+  return newlyAdded.some((token) => signalTokens.has(token));
+}
+
+function changesMetrics(original: string, revised: string): boolean {
+  const originalMetrics = new Set(extractMetricTokens(original));
+  const revisedMetrics = new Set(extractMetricTokens(revised));
+
+  if (originalMetrics.size === 0) {
+    return revisedMetrics.size > 0;
+  }
+
+  for (const metric of revisedMetrics) {
+    if (!originalMetrics.has(metric)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasAdequateContentOverlap(original: string, revised: string): boolean {
+  const originalTokens = new Set(tokenize(original));
+  const revisedTokens = new Set(tokenize(revised));
+
+  if (originalTokens.size === 0 || revisedTokens.size === 0) {
+    return false;
+  }
+
+  let overlap = 0;
+  for (const token of originalTokens) {
+    if (revisedTokens.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  return overlap / originalTokens.size >= 0.45;
+}
+
+export function acceptBulletRewrites(
+  selectedBullets: SelectedBullet[],
+  rewriteMap: RewriteMap,
+  signals: StructuredJobSignals
+): AcceptedRewrite[] {
+  const accepted: AcceptedRewrite[] = [];
+  const signalTokens = collectSignalTokenSet(signals);
+
+  for (const bullet of selectedBullets) {
+    const rewrite = rewriteMap[bullet.id];
+    if (!rewrite?.revised) {
+      continue;
+    }
+
+    const revised = normalizeWhitespace(rewrite.revised);
+    if (!revised || revised === normalizeWhitespace(bullet.originalText)) {
+      continue;
+    }
+
+    if (containsUnsupportedSignalTokens(bullet.originalText, revised, signalTokens)) {
+      continue;
+    }
+
+    if (changesMetrics(bullet.originalText, revised)) {
+      continue;
+    }
+
+    if (!hasAdequateContentOverlap(bullet.originalText, revised)) {
+      continue;
+    }
+
+    accepted.push({
+      id: bullet.id,
+      revised,
+      reason: rewrite.reason || bullet.reasons[0] || "Improved clarity and keyword alignment.",
+      matchedSignals: rewrite.matched_signals ?? bullet.matchedSignals,
+    });
+  }
+
+  return accepted;
+}
+
+function termSupported(term: string, evidenceTerms: Set<string>): boolean {
+  const normalized = normalizeTerm(term);
+  if (!normalized) {
+    return true;
+  }
+
+  if (evidenceTerms.has(normalized)) {
+    return true;
+  }
+
+  return tokenize(term).every((token) => evidenceTerms.has(token));
+}
+
+export function inferSupportedSkillsToAdd(
+  resume: Resume,
+  signals: StructuredJobSignals
+): TailorResponse["skills_to_add"] {
+  const evidenceTerms = collectResumeEvidenceTerms(resume);
+  const existingSkills = new Set(
+    [
+      ...resume.skills.languages,
+      ...resume.skills.frameworks_libraries,
+      ...resume.skills.tools,
+    ].map((skill) => normalizeTerm(skill))
+  );
+
+  const result: TailorResponse["skills_to_add"] = {
+    languages: [],
+    frameworks_libraries: [],
+    tools: [],
+  };
+
+  const languageTerms = new Set(["javascript", "typescript", "python", "java", "sql", "go", "rust", "ruby", "php", "swift", "kotlin", "c", "c++", "c#"]);
+
+  const maybeAdd = (skill: string): void => {
+    const normalized = normalizeTerm(skill);
+    if (!normalized || existingSkills.has(normalized) || !termSupported(skill, evidenceTerms)) {
+      return;
+    }
+
+    if (languageTerms.has(normalized)) {
+      result.languages.push(skill);
+    } else if (skill.includes(".") || skill.includes("React") || skill.includes("Next") || skill.includes("Node") || skill.includes("Vue") || skill.includes("Angular") || skill.includes("Django") || skill.includes("Flask")) {
+      result.frameworks_libraries.push(skill);
+    } else {
+      result.tools.push(skill);
+    }
+    existingSkills.add(normalized);
+  };
+
+  [...signals.required_skills, ...signals.tools_technologies, ...signals.preferred_skills].forEach(maybeAdd);
+
+  return {
+    languages: uniq(result.languages),
+    frameworks_libraries: uniq(result.frameworks_libraries),
+    tools: uniq(result.tools),
+  };
+}
+
+export function findMissingKeywords(
+  resume: Resume,
+  signals: StructuredJobSignals
+): MissingKeyword[] {
+  const evidenceTerms = collectResumeEvidenceTerms(resume);
+  const gaps: MissingKeyword[] = [];
+
+  const inspect = (
+    terms: string[],
+    category: MissingKeyword["category"],
+    reasonPrefix: string
+  ): void => {
+    for (const term of uniq(terms)) {
+      if (!term || termSupported(term, evidenceTerms)) {
+        continue;
+      }
+
+      gaps.push({
+        keyword: term,
+        category,
+        reason: `${reasonPrefix}; no direct support found in the current resume.`,
+      });
+    }
+  };
+
+  inspect(signals.required_skills, "required_skill", "Required skill is missing");
+  inspect(signals.preferred_skills, "preferred_skill", "Preferred skill is not currently supported");
+  inspect(signals.tools_technologies, "tool", "Requested tool or technology is not currently supported");
+  inspect(signals.responsibilities.slice(0, 6), "responsibility", "Responsibility is not directly evidenced");
+  inspect(signals.domain_keywords.slice(0, 6), "domain", "Domain keyword is not directly evidenced");
+
+  return gaps.slice(0, 12);
+}
+
+export function buildBulletEditMaps(
+  resume: Resume,
+  acceptedRewrites: AcceptedRewrite[]
+): {
+  experienceEdits: TailorResponse["experience_edits"];
+  projectEdits: TailorResponse["project_edits"];
+} {
+  const experienceEdits: TailorResponse["experience_edits"] = {};
+  const projectEdits: TailorResponse["project_edits"] = {};
+
+  const grouped = new Map<string, AcceptedRewrite[]>();
+  for (const rewrite of acceptedRewrites) {
+    const [section, label] = rewrite.id.split(":");
+    const key = `${section}:${label}`;
+    const list = grouped.get(key) ?? [];
+    list.push(rewrite);
+    grouped.set(key, list);
+  }
+
+  for (const [groupKey, rewrites] of grouped.entries()) {
+    const [section, label] = groupKey.split(":");
+    if (section === "experience") {
+      const entry = resume.experience.find((item) => item.company === label);
+      if (!entry) {
+        continue;
+      }
+
+      const bullets = [...entry.bullets];
+      rewrites.forEach((rewrite) => {
+        const index = Number(rewrite.id.split(":").pop());
+        if (!Number.isNaN(index) && bullets[index]) {
+          bullets[index] = rewrite.revised;
+        }
+      });
+      experienceEdits[label] = bullets;
+      continue;
+    }
+
+    const project = resume.projects.find((item) => item.name === label);
+    if (!project) {
+      continue;
+    }
+
+    const bullets = [...project.bullets];
+    rewrites.forEach((rewrite) => {
+      const index = Number(rewrite.id.split(":").pop());
+      if (!Number.isNaN(index) && bullets[index]) {
+        bullets[index] = rewrite.revised;
+      }
+    });
+    projectEdits[label] = bullets;
+  }
+
+  return {
+    experienceEdits,
+    projectEdits,
+  };
+}
+
+export function buildChangedBullets(
+  selectedBullets: SelectedBullet[],
+  acceptedRewrites: AcceptedRewrite[]
+): ChangedBullet[] {
+  const selectedById = new Map(selectedBullets.map((item) => [item.id, item]));
+
+  return acceptedRewrites.map((rewrite) => {
+    const original = selectedById.get(rewrite.id);
+    return {
+      id: rewrite.id,
+      section: original?.section ?? "experience",
+      section_label: original?.sectionLabel ?? "",
+      index: original?.index ?? 0,
+      original: original?.originalText ?? "",
+      revised: rewrite.revised,
+      matched_signals: rewrite.matchedSignals,
+      reason: rewrite.reason,
+    };
+  });
+}
+
+export function applyResponseToResume(resume: Resume, response: TailorResponse): Resume {
+  const nextResume: Resume = structuredClone(resume);
+
+  if (response.updated_summary.trim()) {
+    nextResume.summary = response.updated_summary.trim();
+  }
+
+  for (const [company, bullets] of Object.entries(response.experience_edits)) {
+    const entry = nextResume.experience.find((item) => item.company === company);
+    if (entry && bullets.length === entry.bullets.length) {
+      entry.bullets = [...bullets];
+    }
+  }
+
+  for (const [projectName, bullets] of Object.entries(response.project_edits)) {
+    const project = nextResume.projects.find((item) => item.name === projectName);
+    if (project && bullets.length === project.bullets.length) {
+      project.bullets = [...bullets];
+    }
+  }
+
+  const mergeSkillList = (target: string[], additions: string[]): string[] => {
+    const seen = new Set(target.map((item) => normalizeTerm(item)));
+    const merged = [...target];
+    additions.forEach((item) => {
+      const normalized = normalizeTerm(item);
+      if (normalized && !seen.has(normalized)) {
+        seen.add(normalized);
+        merged.push(item);
+      }
+    });
+    return merged;
+  };
+
+  nextResume.skills.languages = mergeSkillList(
+    nextResume.skills.languages,
+    response.skills_to_add.languages
+  );
+  nextResume.skills.frameworks_libraries = mergeSkillList(
+    nextResume.skills.frameworks_libraries,
+    response.skills_to_add.frameworks_libraries
+  );
+  nextResume.skills.tools = mergeSkillList(nextResume.skills.tools, response.skills_to_add.tools);
+
+  return nextResume;
+}
+
+export function formatResumeAsText(resume: Resume): string {
+  const lines: string[] = [];
+
+  lines.push(resume.name);
+  lines.push([
+    resume.contact.email,
+    resume.contact.phone,
+    resume.contact.linkedin,
+    resume.contact.github,
+  ].filter(Boolean).join(" | "));
+  lines.push("");
+
+  if (resume.summary.trim()) {
+    lines.push("SUMMARY");
+    lines.push(resume.summary.trim());
+    lines.push("");
+  }
+
+  lines.push("SKILLS");
+  if (resume.skills.languages.length > 0) {
+    lines.push(`Languages: ${resume.skills.languages.join(", ")}`);
+  }
+  if (resume.skills.frameworks_libraries.length > 0) {
+    lines.push(`Frameworks/Libraries: ${resume.skills.frameworks_libraries.join(", ")}`);
+  }
+  if (resume.skills.tools.length > 0) {
+    lines.push(`Tools: ${resume.skills.tools.join(", ")}`);
+  }
+  lines.push("");
+
+  if (resume.experience.length > 0) {
+    lines.push("EXPERIENCE");
+    resume.experience.forEach((item) => {
+      lines.push(`${item.role} | ${item.company}${item.dates ? ` | ${item.dates}` : ""}`);
+      item.bullets.forEach((bullet) => lines.push(`- ${bullet}`));
+      lines.push("");
+    });
+  }
+
+  if (resume.projects.length > 0) {
+    lines.push("PROJECTS");
+    resume.projects.forEach((item) => {
+      lines.push(`${item.name}${item.date ? ` | ${item.date}` : ""}`);
+      item.bullets.forEach((bullet) => lines.push(`- ${bullet}`));
+      lines.push("");
+    });
+  }
+
+  if (resume.education.length > 0) {
+    lines.push("EDUCATION");
+    resume.education.forEach((item) => {
+      const detailParts = [item.degree, item.institution, item.graduation_year].filter(Boolean);
+      lines.push(detailParts.join(" | "));
+      if (item.gpa) {
+        lines.push(`GPA: ${item.gpa}`);
+      }
+      lines.push("");
+    });
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export function buildImprovementNotes(response: {
+  changedBullets: ChangedBullet[];
+  missingKeywords: MissingKeyword[];
+  skillsToAdd: TailorResponse["skills_to_add"];
+  updatedSummary: string;
+}): string[] {
+  const notes: string[] = [];
+
+  if (response.updatedSummary.trim()) {
+    notes.push("Refined the summary to better reflect the target role and strongest supported qualifications.");
+  }
+  if (response.changedBullets.length > 0) {
+    notes.push(`Rewrote ${response.changedBullets.length} high-relevance bullets while keeping the original facts and metrics intact.`);
+  }
+
+  const surfacedSkillsCount =
+    response.skillsToAdd.languages.length +
+    response.skillsToAdd.frameworks_libraries.length +
+    response.skillsToAdd.tools.length;
+  if (surfacedSkillsCount > 0) {
+    notes.push(`Surfaced ${surfacedSkillsCount} existing capabilities in the skills section where the resume already supported them.`);
+  }
+
+  if (response.missingKeywords.length > 0) {
+    notes.push("Separated unsupported requirements into explicit gaps instead of injecting unverified keywords into the resume.");
+  }
+
+  if (notes.length === 0) {
+    notes.push("Kept the resume largely unchanged because the strongest content was already aligned and truthful.");
+  }
+
+  return notes;
+}

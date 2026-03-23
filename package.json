@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:pdf": "node scripts/test-pdf.js",
+    "test:tailor": "npx tsx scripts/test-tailor-pipeline.ts",
     "migrate": "prisma migrate deploy",
     "migrate:dev": "prisma migrate dev"
   },

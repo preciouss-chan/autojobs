@@ -120,6 +120,8 @@ export async function POST(req: Request): Promise<NextResponse> {
      }
 
      const { PDFParse } = require("pdf-parse");
+     const { getData } = require("pdf-parse/worker");
+     PDFParse.setWorker(getData());
      
      // Parse PDF and extract text
       let extractedText: string = "";

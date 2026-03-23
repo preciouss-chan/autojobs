@@ -56,7 +56,7 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || errorData.details || `Failed to parse PDF`);
+      throw new Error(errorData.details || errorData.error || `Failed to parse PDF`);
     }
 
     const resumeData = await response.json();

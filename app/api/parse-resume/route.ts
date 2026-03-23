@@ -103,21 +103,18 @@ export async function POST(req: Request): Promise<NextResponse> {
      // Read PDF file as buffer
      const arrayBuffer = await file.arrayBuffer();
      const buffer = Buffer.from(arrayBuffer);
-     const uint8Array = new Uint8Array(buffer);
 
-     // Use require for pdf-parse
-     const { PDFParse } = require("pdf-parse");
+     // Use the simpler parser variant that already works in repo scripts
+     const PDFParser = require("pdf-parse/lib/pdf-parse.js");
      
-     // Parse PDF and extract text
-     let extractedText: string = "";
-     try {
-       const parser = new PDFParse(uint8Array);
-       await parser.load();
-       const result = await parser.getText();
-       extractedText = result.text || "";
-     } catch (pdfErr) {
-       console.error("PDF parsing failed:", pdfErr);
-       return NextResponse.json(
+      // Parse PDF and extract text
+      let extractedText: string = "";
+      try {
+        const result = await PDFParser(buffer);
+        extractedText = result.text || "";
+      } catch (pdfErr) {
+        console.error("PDF parsing failed:", pdfErr);
+        return NextResponse.json(
          ErrorResponseSchema.parse({
            error: "Could not extract text from PDF. Please ensure the PDF contains readable text.",
            details: pdfErr instanceof Error ? pdfErr.message : String(pdfErr),

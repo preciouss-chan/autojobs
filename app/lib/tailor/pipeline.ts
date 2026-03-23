@@ -100,6 +100,50 @@ const TECH_ALIASES: Record<string, string> = {
   apis: "api",
 };
 
+const KNOWN_TECH_TERMS = uniq([
+  ...Object.keys(TECH_ALIASES),
+  ...Object.values(TECH_ALIASES),
+  "python",
+  "typescript",
+  "javascript",
+  "java",
+  "sql",
+  "c",
+  "c++",
+  "c#",
+  "kotlin",
+  "react",
+  "react-native",
+  "next.js",
+  "nextjs",
+  "flask",
+  "django",
+  "django rest",
+  "bootstrap",
+  "matplotlib",
+  "sklearn",
+  "scikit-learn",
+  "pandas",
+  "git",
+  "unity",
+  "android studio",
+  "openai",
+  "gpt-3.5",
+  "aws",
+  "colyseus",
+  "vr",
+  "rest api",
+]);
+
+const PROFESSIONAL_SKILL_PATTERNS: Record<string, RegExp[]> = {
+  teamwork: [/\bteam(work)?\b/i, /cross-functional/i, /collaborat/i, /worked with/i],
+  communication: [/communicat/i, /present/i, /feedback/i, /stakeholder/i],
+  leadership: [/led\b/i, /mentored/i, /owned/i, /coordinated/i],
+  "problem-solving": [/diagnos/i, /resolved/i, /troubleshoot/i, /improv/i, /optimized/i],
+  adaptability: [/fast-paced/i, /quickly/i, /time-sensitive/i, /high-stakes/i],
+  "customer support": [/support(ed|ing)?/i, /customer/i, /user feedback/i],
+};
+
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -119,6 +163,13 @@ function tokenize(value: string): string[] {
   return normalizeTerm(value)
     .split(/\s+/)
     .filter((token) => token.length > 1 && !COMMON_STOPWORDS.has(token));
+}
+
+function titleCaseLabel(value: string): string {
+  return value
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function uniq(values: string[]): string[] {
@@ -403,6 +454,7 @@ function collectResumeEvidenceTerms(resume: Resume): Set<string> {
   resume.skills.languages.forEach(addTokens);
   resume.skills.frameworks_libraries.forEach(addTokens);
   resume.skills.tools.forEach(addTokens);
+  resume.skills.professional_skills.forEach(addTokens);
 
   resume.experience.forEach((exp) => {
     addTokens(exp.role);
@@ -412,10 +464,80 @@ function collectResumeEvidenceTerms(resume: Resume): Set<string> {
 
   resume.projects.forEach((project) => {
     addTokens(project.name);
+    project.technologies.forEach(addTokens);
     project.bullets.forEach(addTokens);
   });
 
   return terms;
+}
+
+function collectProjectTechnologyTerms(resume: Resume, signals: StructuredJobSignals): string[] {
+  const candidates = new Map<string, string>();
+  const register = (term: string): void => {
+    const normalized = normalizeTerm(term);
+    if (!normalized) {
+      return;
+    }
+    if (!candidates.has(normalized)) {
+      candidates.set(normalized, term);
+    }
+  };
+
+  const searchableTerms = uniq([
+    ...KNOWN_TECH_TERMS,
+    ...signals.required_skills,
+    ...signals.tools_technologies,
+    ...signals.preferred_skills,
+    ...resume.skills.languages,
+    ...resume.skills.frameworks_libraries,
+    ...resume.skills.tools,
+  ]);
+
+  resume.projects.forEach((project) => {
+    project.technologies.forEach(register);
+    project.bullets.forEach((bullet) => {
+      phraseMatches(bullet, searchableTerms).forEach(register);
+    });
+  });
+
+  return Array.from(candidates.values());
+}
+
+function inferProfessionalSkills(resume: Resume, signals: StructuredJobSignals): string[] {
+  const text = [
+    resume.summary,
+    ...resume.experience.flatMap((item) => [item.role, ...item.bullets]),
+    ...resume.projects.flatMap((item) => item.bullets),
+  ].join(" \n ");
+
+  const inferred = new Set<string>();
+
+  for (const [skill, patterns] of Object.entries(PROFESSIONAL_SKILL_PATTERNS)) {
+    if (patterns.some((pattern) => pattern.test(text))) {
+      inferred.add(titleCaseLabel(skill));
+    }
+  }
+
+  const jobProfessionalTerms = uniq([
+    ...signals.required_skills,
+    ...signals.preferred_skills,
+    ...signals.responsibilities,
+  ]).filter((term) => !KNOWN_TECH_TERMS.includes(normalizeTerm(term)));
+
+  jobProfessionalTerms.forEach((term) => {
+    if (termSupported(term, collectResumeEvidenceTerms(resume))) {
+      inferred.add(titleCaseLabel(term));
+      return;
+    }
+
+    const normalizedTerm = normalizeTerm(term);
+    const mappedPatterns = PROFESSIONAL_SKILL_PATTERNS[normalizedTerm];
+    if (mappedPatterns && mappedPatterns.some((pattern) => pattern.test(text))) {
+      inferred.add(titleCaseLabel(term));
+    }
+  });
+
+  return Array.from(inferred);
 }
 
 function collectSignalTokenSet(signals: StructuredJobSignals): Set<string> {
@@ -534,6 +656,7 @@ export function inferSupportedSkillsToAdd(
       ...resume.skills.languages,
       ...resume.skills.frameworks_libraries,
       ...resume.skills.tools,
+      ...resume.skills.professional_skills,
     ].map((skill) => normalizeTerm(skill))
   );
 
@@ -541,6 +664,7 @@ export function inferSupportedSkillsToAdd(
     languages: [],
     frameworks_libraries: [],
     tools: [],
+    professional_skills: [],
   };
 
   const languageTerms = new Set(["javascript", "typescript", "python", "java", "sql", "go", "rust", "ruby", "php", "swift", "kotlin", "c", "c++", "c#"]);
@@ -555,18 +679,30 @@ export function inferSupportedSkillsToAdd(
       result.languages.push(skill);
     } else if (skill.includes(".") || skill.includes("React") || skill.includes("Next") || skill.includes("Node") || skill.includes("Vue") || skill.includes("Angular") || skill.includes("Django") || skill.includes("Flask")) {
       result.frameworks_libraries.push(skill);
+    } else if (!KNOWN_TECH_TERMS.includes(normalized) && signals.responsibilities.some((item) => normalizeTerm(item) === normalized)) {
+      result.professional_skills.push(titleCaseLabel(skill));
     } else {
       result.tools.push(skill);
     }
     existingSkills.add(normalized);
   };
 
+  collectProjectTechnologyTerms(resume, signals).forEach(maybeAdd);
   [...signals.required_skills, ...signals.tools_technologies, ...signals.preferred_skills].forEach(maybeAdd);
+  inferProfessionalSkills(resume, signals).forEach((skill) => {
+    const normalized = normalizeTerm(skill);
+    if (!normalized || existingSkills.has(normalized)) {
+      return;
+    }
+    result.professional_skills.push(skill);
+    existingSkills.add(normalized);
+  });
 
   return {
     languages: uniq(result.languages),
     frameworks_libraries: uniq(result.frameworks_libraries),
     tools: uniq(result.tools),
+    professional_skills: uniq(result.professional_skills),
   };
 }
 
@@ -727,6 +863,10 @@ export function applyResponseToResume(resume: Resume, response: TailorResponse):
     response.skills_to_add.frameworks_libraries
   );
   nextResume.skills.tools = mergeSkillList(nextResume.skills.tools, response.skills_to_add.tools);
+  nextResume.skills.professional_skills = mergeSkillList(
+    nextResume.skills.professional_skills,
+    response.skills_to_add.professional_skills
+  );
 
   return nextResume;
 }
@@ -758,6 +898,9 @@ export function formatResumeAsText(resume: Resume): string {
   }
   if (resume.skills.tools.length > 0) {
     lines.push(`Tools: ${resume.skills.tools.join(", ")}`);
+  }
+  if (resume.skills.professional_skills.length > 0) {
+    lines.push(`Professional Skills: ${resume.skills.professional_skills.join(", ")}`);
   }
   lines.push("");
 
@@ -806,6 +949,7 @@ function extractSectionText(resume: Resume): {
       ...resume.skills.languages,
       ...resume.skills.frameworks_libraries,
       ...resume.skills.tools,
+      ...resume.skills.professional_skills,
     ].join(" "),
     experience: resume.experience.flatMap((item) => [item.role, item.company, ...item.bullets]).join(" "),
     projects: resume.projects.flatMap((item) => [item.name, ...item.bullets]).join(" "),
@@ -917,7 +1061,8 @@ export function buildImprovementNotes(response: {
   const surfacedSkillsCount =
     response.skillsToAdd.languages.length +
     response.skillsToAdd.frameworks_libraries.length +
-    response.skillsToAdd.tools.length;
+    response.skillsToAdd.tools.length +
+    response.skillsToAdd.professional_skills.length;
   if (surfacedSkillsCount > 0) {
     notes.push(`Surfaced ${surfacedSkillsCount} existing capabilities in the skills section where the resume already supported them.`);
   }

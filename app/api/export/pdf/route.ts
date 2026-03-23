@@ -160,6 +160,9 @@ export async function POST(req: Request): Promise<NextResponse> {
         if (inputResume.skills.tools?.length) {
           skillsArr.push(`Tools: ${inputResume.skills.tools.join(", ")}`);
         }
+        if (inputResume.skills.professional_skills?.length) {
+          skillsArr.push(`Professional Skills: ${inputResume.skills.professional_skills.join(", ")}`);
+        }
         if (skillsArr.length > 0) {
           estimatedHeight += 3 + 12 + 6; // Before + title + after section title
           skillsArr.forEach((skillLine) => {
@@ -210,6 +213,10 @@ export async function POST(req: Request): Promise<NextResponse> {
         fittedResume,
         fittedResume.skills.tools
       );
+      fittedResume.skills.professional_skills = rankSkillsByEvidence(
+        fittedResume,
+        fittedResume.skills.professional_skills
+      );
 
       const compactSteps: Array<() => boolean> = [
         // Priority 1: Trim tools skills (least important)
@@ -223,7 +230,18 @@ export async function POST(req: Request): Promise<NextResponse> {
           }
           return false;
         },
-        // Priority 2: Trim frameworks_libraries
+        // Priority 2: Trim professional skills
+        () => {
+          if (fittedResume.skills.professional_skills.length > 4) {
+            fittedResume.skills.professional_skills = rankSkillsByEvidence(
+              fittedResume,
+              fittedResume.skills.professional_skills
+            ).slice(0, 4);
+            return true;
+          }
+          return false;
+        },
+        // Priority 3: Trim frameworks_libraries
         () => {
           if (fittedResume.skills.frameworks_libraries.length > 5) {
             fittedResume.skills.frameworks_libraries = rankSkillsByEvidence(
@@ -234,7 +252,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           }
           return false;
         },
-        // Priority 3: Trim languages
+        // Priority 4: Trim languages
         () => {
           if (fittedResume.skills.languages.length > 5) {
             fittedResume.skills.languages = rankSkillsByEvidence(
@@ -455,6 +473,9 @@ export async function POST(req: Request): Promise<NextResponse> {
         }
         if (fittedResume.skills.tools && fittedResume.skills.tools.length > 0) {
           skillsArr.push(`Tools: ${fittedResume.skills.tools.join(", ")}`);
+        }
+        if (fittedResume.skills.professional_skills && fittedResume.skills.professional_skills.length > 0) {
+          skillsArr.push(`Professional Skills: ${fittedResume.skills.professional_skills.join(", ")}`);
         }
 
        if (skillsArr.length > 0) {

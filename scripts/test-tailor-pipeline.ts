@@ -77,6 +77,7 @@ const resume: Resume = {
     languages: ["JavaScript", "TypeScript", "Python"],
     frameworks_libraries: ["React", "Next.js"],
     tools: ["Git", "PostgreSQL"],
+    professional_skills: ["Communication"],
   },
   experience: [
     {
@@ -85,7 +86,7 @@ const resume: Resume = {
       dates: "2024-Present",
       bullets: [
         "Built React and Next.js workflows that reduced manual onboarding time by 35%.",
-        "Answered support tickets for customer issues.",
+        "Worked with cross-functional teammates to answer support tickets for customer issues.",
       ],
     },
   ],
@@ -94,6 +95,7 @@ const resume: Resume = {
       name: "Apply Boost",
       date: "2023",
       link: "",
+      technologies: ["OpenAI", "Flask"],
       bullets: [
         "Developed a resume tailoring prototype with OpenAI-assisted text suggestions.",
       ],
@@ -129,7 +131,7 @@ function run(): void {
 
   assert.ok(topBullet, "expected the strongest relevant experience bullet to be selected");
   assert.equal(
-    selectedBullets.some((item) => item.originalText.includes("Answered support tickets")),
+    selectedBullets.some((item) => item.originalText.includes("cross-functional teammates")),
     false,
     "irrelevant support bullet should not be selected for rewrite"
   );
@@ -158,7 +160,15 @@ function run(): void {
   const skillsToAdd = inferSupportedSkillsToAdd(resume, signals);
   const missingKeywords = findMissingKeywords(resume, signals);
 
-  assert.deepEqual(skillsToAdd.frameworks_libraries, [], "existing frameworks should not be duplicated");
+  assert.ok(
+    skillsToAdd.frameworks_libraries.includes("Flask"),
+    "project frameworks should be surfaced into the skills section when supported by project technologies"
+  );
+  assert.ok(skillsToAdd.tools.includes("OpenAI"), "project technologies should be surfaced into the skills section");
+  assert.ok(
+    skillsToAdd.professional_skills.some((item) => item.toLowerCase() === "teamwork"),
+    "supported soft skills should be surfaced into a dedicated professional skills category"
+  );
   assert.ok(
     missingKeywords.some((item) => item.keyword === "Docker"),
     "unsupported requested tools should be surfaced as gaps"
@@ -216,6 +226,7 @@ function run(): void {
   const formatted = formatResumeAsText(revisedResume);
   assert.ok(formatted.includes("SUMMARY"), "formatted resume should preserve section headings");
   assert.ok(formatted.includes("- Built React and Next.js onboarding workflows"), "formatted resume should remain plain-text bullet based");
+  assert.ok(formatted.includes("Professional Skills:"), "formatted resume should include expanded skill categories when present");
   assert.equal(/[\t]|[•]|<table/i.test(formatted), false, "output should remain ATS-friendly plain text");
   assert.ok(atsAnalysis.score > 0, "ATS analysis should return a numeric score");
   assert.ok(atsAnalysis.section_coverage.summary.includes("Frontend Engineer"), "ATS analysis should track title coverage in the summary");

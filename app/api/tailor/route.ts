@@ -162,6 +162,9 @@ function buildResumeEvidenceContext(resume: Resume): string {
   if (resume.skills.tools.length > 0) {
     lines.push(`Tools: ${resume.skills.tools.join(", ")}`);
   }
+  if (resume.skills.professional_skills.length > 0) {
+    lines.push(`Professional Skills: ${resume.skills.professional_skills.join(", ")}`);
+  }
 
   resume.experience.forEach((item) => {
     lines.push(`${item.role} | ${item.company} | ${item.dates}`);
@@ -170,6 +173,9 @@ function buildResumeEvidenceContext(resume: Resume): string {
 
   resume.projects.forEach((item) => {
     lines.push(`${item.name} | ${item.date}`);
+    if (item.technologies.length > 0) {
+      lines.push(`Technologies: ${item.technologies.join(", ")}`);
+    }
     item.bullets.forEach((bullet) => lines.push(`- ${bullet}`));
   });
 

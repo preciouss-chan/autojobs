@@ -12,6 +12,7 @@ export const ProjectSchema = z.object({
   name: z.string(),
   date: z.string().default(""),
   link: z.string().default(""),
+  technologies: z.array(z.string()).default([]),
   bullets: z.array(z.string()).default([]),
 });
 
@@ -33,6 +34,7 @@ export const SkillsSchema = z.object({
   languages: z.array(z.string()).default([]),
   frameworks_libraries: z.array(z.string()).default([]),
   tools: z.array(z.string()).default([]),
+  professional_skills: z.array(z.string()).default([]),
 });
 
 export const ResumeSchema = z.object({
@@ -175,7 +177,7 @@ export const TailorResponseSchema = z.object({
   skills_reframing: z
     .array(
       z.object({
-        category: z.enum(["languages", "frameworks_libraries", "tools", "experience"]),
+        category: z.enum(["languages", "frameworks_libraries", "tools", "professional_skills", "experience"]),
         original: z.string(),
         tailored: z.string(),
         evidence: z.string(),
@@ -187,8 +189,9 @@ export const TailorResponseSchema = z.object({
       languages: z.array(z.string()).default([]),
       frameworks_libraries: z.array(z.string()).default([]),
       tools: z.array(z.string()).default([]),
+      professional_skills: z.array(z.string()).default([]),
     })
-    .default(() => ({ languages: [], frameworks_libraries: [], tools: [] })),
+    .default(() => ({ languages: [], frameworks_libraries: [], tools: [], professional_skills: [] })),
   job_signals: StructuredJobSignalsSchema,
   bullet_analysis: z.array(ResumeBulletAnalysisSchema).default([]),
   changed_bullets: z.array(ChangedBulletSchema).default([]),

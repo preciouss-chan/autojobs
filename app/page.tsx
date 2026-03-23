@@ -379,7 +379,7 @@ export default function TailorPage(): React.ReactElement {
                           items.length > 0 ? (
                             <div key={category}>
                               <span className="font-semibold capitalize">
-                                {category}:
+                                {category.replace(/_/g, " ")}:
                               </span>{" "}
                               {items.join(", ")}
                             </div>

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   acceptBulletRewrites,
+  analyzeAtsOptimization,
   applyResponseToResume,
   buildBulletEditMaps,
   buildImprovementNotes,
@@ -40,6 +41,10 @@ function sanitizeCoverLetterForTest(rawText: string, candidateName: string): str
   }
 
   return `${normalized}\n\nSincerely,\n${candidateName}`;
+}
+
+function countWordsForTest(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
 }
 
 const resume: Resume = {
@@ -152,6 +157,21 @@ function run(): void {
     bullet_analysis: [],
     changed_bullets: changedBullets,
     missing_keywords: missingKeywords,
+    ats_analysis: {
+      score: 0,
+      target_job_title: signals.title,
+      title_alignment: "partial",
+      matched_keywords: [],
+      keyword_gaps: [],
+      section_coverage: {
+        summary: [],
+        skills: [],
+        experience: [],
+        projects: [],
+      },
+      formatting_warnings: [],
+      optimization_tips: [],
+    },
     improvement_notes: buildImprovementNotes({
       changedBullets,
       missingKeywords,
@@ -163,6 +183,7 @@ function run(): void {
   };
 
   const revisedResume = applyResponseToResume(resume, response);
+  const atsAnalysis = analyzeAtsOptimization(revisedResume, signals, missingKeywords);
 
   assert.equal(
     revisedResume.experience[0].bullets.length,
@@ -179,6 +200,9 @@ function run(): void {
   assert.ok(formatted.includes("SUMMARY"), "formatted resume should preserve section headings");
   assert.ok(formatted.includes("- Built React and Next.js onboarding workflows"), "formatted resume should remain plain-text bullet based");
   assert.equal(/[\t]|[•]|<table/i.test(formatted), false, "output should remain ATS-friendly plain text");
+  assert.ok(atsAnalysis.score > 0, "ATS analysis should return a numeric score");
+  assert.ok(atsAnalysis.section_coverage.summary.includes("Frontend Engineer"), "ATS analysis should track title coverage in the summary");
+  assert.ok(atsAnalysis.optimization_tips.length > 0, "ATS analysis should produce actionable optimization tips");
 
   const cleanedCoverLetter = sanitizeCoverLetterForTest(
     "Dear Hiring Manager,\n\nBody paragraph here.\n\nSincerely, Precious Nyaupane\n\nSincerely,\n[Your Name]",
@@ -191,6 +215,13 @@ function run(): void {
   );
 
   assert.equal(signals.company_name, "Acme Labs", "structured job signals should carry the company name for cover letter personalization");
+
+  assert.ok(
+    countWordsForTest(
+      "Dear Hiring Manager,\n\nThis is a longer first paragraph with enough words to simulate a realistic cover letter draft for testing purposes.\n\nThis second paragraph adds more supporting detail about projects, tools, and outcomes that are already supported by the resume content.\n\nThis third paragraph closes with motivation and contribution language.\n\nSincerely,\nPrecious Nyaupane"
+    ) > 40,
+    "word counting helper should treat realistic cover letter text as non-trivially long"
+  );
 
   console.log("All tailor pipeline assertions passed.");
 }

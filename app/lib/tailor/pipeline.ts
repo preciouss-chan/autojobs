@@ -1,4 +1,5 @@
 import type {
+  AtsAnalysis,
   ChangedBullet,
   MissingKeyword,
   Resume,
@@ -168,6 +169,7 @@ function estimateRecencyWeight(dates: string): number {
 
 function collectSignalTerms(signals: StructuredJobSignals): string[] {
   return uniq([
+    signals.company_name,
     ...signals.required_skills,
     ...signals.preferred_skills,
     ...signals.tools_technologies,
@@ -177,6 +179,15 @@ function collectSignalTerms(signals: StructuredJobSignals): string[] {
     signals.title,
     signals.team_focus,
   ]);
+}
+
+function collectPriorityKeywords(signals: StructuredJobSignals): string[] {
+  return uniq([
+    signals.title,
+    ...signals.required_skills,
+    ...signals.tools_technologies,
+    ...signals.preferred_skills.slice(0, 4),
+  ]).filter((term) => normalizeTerm(term).length > 1);
 }
 
 function phraseMatches(text: string, phrases: string[]): string[] {
@@ -783,11 +794,116 @@ export function formatResumeAsText(resume: Resume): string {
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function extractSectionText(resume: Resume): {
+  summary: string;
+  skills: string;
+  experience: string;
+  projects: string;
+} {
+  return {
+    summary: resume.summary || "",
+    skills: [
+      ...resume.skills.languages,
+      ...resume.skills.frameworks_libraries,
+      ...resume.skills.tools,
+    ].join(" "),
+    experience: resume.experience.flatMap((item) => [item.role, item.company, ...item.bullets]).join(" "),
+    projects: resume.projects.flatMap((item) => [item.name, ...item.bullets]).join(" "),
+  };
+}
+
+function detectFormattingWarnings(resumeText: string): string[] {
+  const warnings: string[] = [];
+  if (/[•	]/.test(resumeText)) {
+    warnings.push("Avoid non-standard bullets or tab-based spacing in ATS exports.");
+  }
+  if (/[❌✔⚡🎯]/.test(resumeText)) {
+    warnings.push("Remove icons or decorative symbols that ATS parsers may skip.");
+  }
+  if (/<table|\|\s+\|/i.test(resumeText)) {
+    warnings.push("Avoid table-like formatting; keep content in plain text sections.");
+  }
+  return warnings;
+}
+
+export function analyzeAtsOptimization(
+  resume: Resume,
+  signals: StructuredJobSignals,
+  missingKeywords: MissingKeyword[]
+): AtsAnalysis {
+  const sections = extractSectionText(resume);
+  const priorityKeywords = collectPriorityKeywords(signals);
+  const matchedKeywords = priorityKeywords.filter((term) =>
+    [sections.summary, sections.skills, sections.experience, sections.projects]
+      .some((sectionText) => phraseMatches(sectionText, [term]).length > 0)
+  );
+
+  const sectionCoverage = {
+    summary: phraseMatches(sections.summary, priorityKeywords),
+    skills: phraseMatches(sections.skills, priorityKeywords),
+    experience: phraseMatches(sections.experience, priorityKeywords),
+    projects: phraseMatches(sections.projects, priorityKeywords),
+  };
+
+  const normalizedTitle = normalizeTerm(signals.title);
+  const roleTerms = resume.experience.map((item) => item.role).join(" ");
+  const titleAlignment = !normalizedTitle
+    ? "partial"
+    : phraseMatches(roleTerms, [signals.title]).length > 0
+      ? "strong"
+      : tokenOverlapScore(roleTerms, [signals.title]) >= 0.4
+        ? "partial"
+        : "weak";
+
+  let score = 35;
+  score += Math.round((matchedKeywords.length / Math.max(priorityKeywords.length, 1)) * 35);
+  score += Math.min(sectionCoverage.summary.length, 3) * 5;
+  score += Math.min(sectionCoverage.skills.length, 4) * 3;
+  score += Math.min(sectionCoverage.experience.length, 5) * 3;
+  score += titleAlignment === "strong" ? 10 : titleAlignment === "partial" ? 5 : 0;
+  score -= Math.min(missingKeywords.length, 6) * 2;
+  score = Math.max(0, Math.min(100, score));
+
+  const formattingWarnings = detectFormattingWarnings(formatResumeAsText(resume));
+  const optimizationTips: string[] = [];
+
+  if (titleAlignment !== "strong" && signals.title) {
+    optimizationTips.push(`Align your summary and recent role descriptions more clearly to the target title "${signals.title}" when truthful.`);
+  }
+  if (sectionCoverage.summary.length < Math.min(2, priorityKeywords.length)) {
+    optimizationTips.push("Use the summary to reflect the target role and 2-3 of the strongest supported hard skills naturally.");
+  }
+  if (sectionCoverage.skills.length < Math.min(3, priorityKeywords.length)) {
+    optimizationTips.push("Surface proven technical keywords in the skills section so ATS can match them quickly.");
+  }
+  if (sectionCoverage.experience.length < Math.min(4, priorityKeywords.length)) {
+    optimizationTips.push("Place important keywords inside accomplishment bullets, not only in the skills section.");
+  }
+  if (missingKeywords.some((item) => item.category === "required_skill" || item.category === "tool")) {
+    optimizationTips.push("Keep unsupported keywords out of the resume body and address them only if you can add truthful evidence later.");
+  }
+  if (formattingWarnings.length === 0) {
+    optimizationTips.push("Resume output remains plain-text and ATS-friendly: simple headings, standard bullets, and no complex layout artifacts.");
+  }
+
+  return {
+    score,
+    target_job_title: signals.title,
+    title_alignment: titleAlignment,
+    matched_keywords: matchedKeywords,
+    keyword_gaps: uniq(missingKeywords.map((item) => item.keyword)),
+    section_coverage: sectionCoverage,
+    formatting_warnings: formattingWarnings,
+    optimization_tips: optimizationTips.slice(0, 6),
+  };
+}
+
 export function buildImprovementNotes(response: {
   changedBullets: ChangedBullet[];
   missingKeywords: MissingKeyword[];
   skillsToAdd: TailorResponse["skills_to_add"];
   updatedSummary: string;
+  atsAnalysis?: AtsAnalysis;
 }): string[] {
   const notes: string[] = [];
 
@@ -808,6 +924,9 @@ export function buildImprovementNotes(response: {
 
   if (response.missingKeywords.length > 0) {
     notes.push("Separated unsupported requirements into explicit gaps instead of injecting unverified keywords into the resume.");
+  }
+  if (response.atsAnalysis) {
+    notes.push(`ATS alignment score: ${response.atsAnalysis.score}/100 with ${response.atsAnalysis.matched_keywords.length} priority keywords matched naturally across the resume.`);
   }
 
   if (notes.length === 0) {

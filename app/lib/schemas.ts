@@ -120,6 +120,28 @@ export const MissingKeywordSchema = z.object({
 
 export type MissingKeyword = z.infer<typeof MissingKeywordSchema>;
 
+export const AtsSectionCoverageSchema = z.object({
+  summary: z.array(z.string()).default([]),
+  skills: z.array(z.string()).default([]),
+  experience: z.array(z.string()).default([]),
+  projects: z.array(z.string()).default([]),
+});
+
+export type AtsSectionCoverage = z.infer<typeof AtsSectionCoverageSchema>;
+
+export const AtsAnalysisSchema = z.object({
+  score: z.number().min(0).max(100),
+  target_job_title: z.string().default(""),
+  title_alignment: z.enum(["strong", "partial", "weak"]),
+  matched_keywords: z.array(z.string()).default([]),
+  keyword_gaps: z.array(z.string()).default([]),
+  section_coverage: AtsSectionCoverageSchema,
+  formatting_warnings: z.array(z.string()).default([]),
+  optimization_tips: z.array(z.string()).default([]),
+});
+
+export type AtsAnalysis = z.infer<typeof AtsAnalysisSchema>;
+
 // API Request schemas
 export const ParseResumeRequestSchema = z.object({
   file: z.instanceof(File),
@@ -171,6 +193,7 @@ export const TailorResponseSchema = z.object({
   bullet_analysis: z.array(ResumeBulletAnalysisSchema).default([]),
   changed_bullets: z.array(ChangedBulletSchema).default([]),
   missing_keywords: z.array(MissingKeywordSchema).default([]),
+  ats_analysis: AtsAnalysisSchema,
   improvement_notes: z.array(z.string()).default([]),
   revised_resume_text: z.string().default(""),
   cover_letter: z.string(),

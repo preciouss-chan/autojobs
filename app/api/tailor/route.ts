@@ -17,6 +17,7 @@ import type {
 import { LLM_CONFIG } from "@/app/lib/llm-config";
 import {
   acceptBulletRewrites,
+  analyzeAtsOptimization,
   applyResponseToResume,
   buildBulletAnalysis,
   buildBulletEditMaps,
@@ -46,6 +47,12 @@ type TailoringDraft = {
   }>;
   cover_letter: string;
 };
+
+const MIN_COVER_LETTER_WORDS = 180;
+
+function countWords(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
 
 function sanitizeCoverLetter(rawText: string, candidateName: string): string {
   const cleaned = rawText
@@ -202,6 +209,10 @@ async function generateTailoringDraft(
     has_metrics: bullet.hasMetrics,
   }));
 
+  const companyInstruction = companyName
+    ? `Company name to mention naturally in the cover letter: ${companyName}`
+    : "Company name was not confidently identified from the job description.";
+
   const prompt = `You are improving a resume conservatively for ATS alignment.
 
 Candidate resume evidence:
@@ -216,10 +227,10 @@ ${JSON.stringify(bulletInventory, null, 2)}
 Tasks:
 1. Rewrite only the selected bullets.
 2. Update the summary in 2-3 sentences so it is specific, truthful, and ATS-friendly.
-3. Write a concise, specific cover letter.
+3. Write a specific, polished cover letter.
 
 Candidate name for the signature: ${candidateName}
-${companyName ? `Company name to mention naturally in the cover letter: ${companyName}` : "Company name was not confidently identified from the job description."}
+${companyInstruction}
 
 Non-negotiable rules:
 - Do not add new tools, technologies, metrics, achievements, responsibilities, or industries.
@@ -229,8 +240,16 @@ Non-negotiable rules:
 - Prefer minimal edits, stronger action verbs, and clearer outcomes.
 - If a bullet is already strong, return it unchanged.
 - Keep the output clean and ATS-friendly.
+- Make the summary ATS-aware: mirror the target title and strongest supported hard skills naturally, without copying the job description verbatim.
+- Favor keywords that appear in the title, required skills, tools/technologies, and recurring responsibilities.
+- Balance hard skills with soft-skill evidence only when those soft skills are already shown by the resume bullets.
 - If a company name is provided, mention ${companyName || "the employer"} naturally in the opening or closing so the letter feels specific to that application.
 - If no company name is provided, do not invent one.
+- Make the cover letter 3 paragraphs and roughly 220-320 words.
+- Paragraph 1: specific interest in the role and why this company/team is compelling.
+- Paragraph 2: one concrete, relevant example from experience or projects with technologies and outcomes already supported by the resume.
+- Paragraph 3: a second relevant strength, plus a forward-looking closing about how you would contribute.
+- Avoid generic filler like "I am writing to express my interest" or "I am excited about the opportunity" unless the sentence contains real specifics.
 - End the cover letter with exactly:
   Sincerely,
   ${candidateName}
@@ -258,10 +277,48 @@ Return only valid JSON with this shape:
   });
 
   const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+  let coverLetter = sanitizeCoverLetter(String(parsed.cover_letter || "").trim(), candidateName);
+
+  if (countWords(coverLetter) < MIN_COVER_LETTER_WORDS) {
+    const expandPrompt = `Expand this cover letter so it feels complete and job-specific without changing the facts.
+
+Candidate resume evidence:
+${buildResumeEvidenceContext(resume)}
+
+Structured job signals:
+${JSON.stringify(signals, null, 2)}
+
+Current cover letter draft:
+${coverLetter}
+
+Requirements:
+- Keep all claims truthful and grounded in the resume.
+- Mention ${companyName || "the company"} naturally only if supported by the extracted company name.
+- Expand to roughly 220-320 words.
+- Keep exactly 3 paragraphs before the closing.
+- Add more specificity, detail, and motivation; do not add fake achievements.
+- End with exactly:
+Sincerely,
+${candidateName}
+
+Return only the full cover letter text.`;
+
+    const expandedResponse = await client.chat.completions.create({
+      model: LLM_CONFIG.DEFAULTS.model,
+      messages: [{ role: "user", content: expandPrompt }],
+      temperature: LLM_CONFIG.DETERMINISTIC.temperature,
+    });
+
+    coverLetter = sanitizeCoverLetter(
+      expandedResponse.choices[0]?.message?.content || coverLetter,
+      candidateName
+    );
+  }
+
   return {
     updated_summary: String(parsed.updated_summary || "").trim(),
     bullet_rewrites: Array.isArray(parsed.bullet_rewrites) ? parsed.bullet_rewrites : [],
-    cover_letter: sanitizeCoverLetter(String(parsed.cover_letter || "").trim(), candidateName),
+    cover_letter: coverLetter,
   };
 }
 
@@ -425,18 +482,39 @@ export async function POST(req: Request): Promise<NextResponse> {
       bullet_analysis: bulletAnalysis,
       changed_bullets: changedBullets,
       missing_keywords: missingKeywords,
+      ats_analysis: {
+        score: 0,
+        target_job_title: "",
+        title_alignment: "weak",
+        matched_keywords: [],
+        keyword_gaps: [],
+        section_coverage: {
+          summary: [],
+          skills: [],
+          experience: [],
+          projects: [],
+        },
+        formatting_warnings: [],
+        optimization_tips: [],
+      },
       improvement_notes: [],
       revised_resume_text: "",
       cover_letter: tailoringDraft.cover_letter,
     };
 
     const revisedResume = applyResponseToResume(resume, responseDraft);
+    responseDraft.ats_analysis = analyzeAtsOptimization(
+      revisedResume,
+      signals,
+      missingKeywords
+    );
     responseDraft.revised_resume_text = formatResumeAsText(revisedResume);
     responseDraft.improvement_notes = buildImprovementNotes({
       changedBullets,
       missingKeywords,
       skillsToAdd,
       updatedSummary: responseDraft.updated_summary,
+      atsAnalysis: responseDraft.ats_analysis,
     });
 
     const validated = TailorResponseSchema.parse(responseDraft);

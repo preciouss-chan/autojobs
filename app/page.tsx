@@ -410,6 +410,54 @@ export default function TailorPage(): React.ReactElement {
               </section>
 
               <section>
+                <h2 className="text-xl font-semibold">ATS Optimization</h2>
+                <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm space-y-3">
+                  <div>
+                    <span className="font-semibold">ATS score:</span>{" "}
+                    {result.ats_analysis.score}/100
+                  </div>
+                  <div>
+                    <span className="font-semibold">Target title:</span>{" "}
+                    {result.ats_analysis.target_job_title || "Not identified"}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Title alignment:</span>{" "}
+                    {result.ats_analysis.title_alignment}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Matched keywords:</span>{" "}
+                    {result.ats_analysis.matched_keywords.length > 0
+                      ? result.ats_analysis.matched_keywords.join(", ")
+                      : "None surfaced yet"}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Section coverage:</span>{" "}
+                    Summary ({result.ats_analysis.section_coverage.summary.length}), Skills ({result.ats_analysis.section_coverage.skills.length}), Experience ({result.ats_analysis.section_coverage.experience.length}), Projects ({result.ats_analysis.section_coverage.projects.length})
+                  </div>
+                  {result.ats_analysis.formatting_warnings.length > 0 && (
+                    <div>
+                      <p className="font-semibold">Formatting warnings</p>
+                      <ul className="list-disc ml-5 mt-1 space-y-1">
+                        {result.ats_analysis.formatting_warnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {result.ats_analysis.optimization_tips.length > 0 && (
+                    <div>
+                      <p className="font-semibold">Optimization tips</p>
+                      <ul className="list-disc ml-5 mt-1 space-y-1">
+                        {result.ats_analysis.optimization_tips.map((tip) => (
+                          <li key={tip}>{tip}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section>
                 <h2 className="text-xl font-semibold">Changed Bullets</h2>
                 <div className="mt-2 p-4 border rounded-lg bg-gray-50 text-sm space-y-4">
                   {result.changed_bullets.length > 0 ? (

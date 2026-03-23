@@ -68,6 +68,7 @@ export const JobRequirementsSchema = z.object({
 export type JobRequirements = z.infer<typeof JobRequirementsSchema>;
 
 export const StructuredJobSignalsSchema = z.object({
+  company_name: z.string().default(""),
   title: z.string().default(""),
   seniority_signals: z.array(z.string()).default([]),
   required_skills: z.array(z.string()).default([]),

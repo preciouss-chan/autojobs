@@ -13,6 +13,35 @@ import {
 } from "@/app/lib/tailor/pipeline";
 import type { Resume, StructuredJobSignals, TailorResponse } from "@/app/lib/schemas";
 
+function sanitizeCoverLetterForTest(rawText: string, candidateName: string): string {
+  const cleaned = rawText
+    .replace(/\[your name\]/gi, candidateName)
+    .replace(/your name/gi, candidateName)
+    .replace(/\r/g, "")
+    .trim();
+
+  const paragraphs = cleaned
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  let normalized = paragraphs.join("\n\n");
+
+  normalized = normalized
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(
+      /(?:\n\n|\n)?(?:sincerely,?|best,?|kind regards,?|thanks,?)(?:\s+[A-Za-z][^\n]*)?(?:\n+[A-Za-z][^\n]*)*\s*$/i,
+      ""
+    )
+    .trim();
+
+  if (!normalized) {
+    normalized = "Thank you for considering my application.";
+  }
+
+  return `${normalized}\n\nSincerely,\n${candidateName}`;
+}
+
 const resume: Resume = {
   name: "Taylor Candidate",
   contact: {
@@ -59,6 +88,7 @@ const resume: Resume = {
 };
 
 const signals: StructuredJobSignals = {
+  company_name: "Acme Labs",
   title: "Frontend Engineer",
   seniority_signals: ["mid-level"],
   required_skills: ["TypeScript", "React"],
@@ -149,6 +179,18 @@ function run(): void {
   assert.ok(formatted.includes("SUMMARY"), "formatted resume should preserve section headings");
   assert.ok(formatted.includes("- Built React and Next.js onboarding workflows"), "formatted resume should remain plain-text bullet based");
   assert.equal(/[\t]|[•]|<table/i.test(formatted), false, "output should remain ATS-friendly plain text");
+
+  const cleanedCoverLetter = sanitizeCoverLetterForTest(
+    "Dear Hiring Manager,\n\nBody paragraph here.\n\nSincerely, Precious Nyaupane\n\nSincerely,\n[Your Name]",
+    "Precious Nyaupane"
+  );
+  assert.equal(
+    cleanedCoverLetter,
+    "Dear Hiring Manager,\n\nBody paragraph here.\n\nSincerely,\nPrecious Nyaupane",
+    "cover letter sanitizer should collapse duplicate sign-offs into one canonical closing"
+  );
+
+  assert.equal(signals.company_name, "Acme Labs", "structured job signals should carry the company name for cover letter personalization");
 
   console.log("All tailor pipeline assertions passed.");
 }

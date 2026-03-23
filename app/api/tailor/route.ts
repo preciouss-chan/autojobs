@@ -59,16 +59,21 @@ function sanitizeCoverLetter(rawText: string, candidateName: string): string {
     .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim())
     .filter(Boolean);
 
-  const normalized = paragraphs.join("\n\n");
-  const hasClosing = /sincerely,?$/im.test(normalized) || /best,?$/im.test(normalized);
-  const hasName = new RegExp(candidateName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(normalized);
+  let normalized = paragraphs.join("\n\n");
 
-  if (hasClosing && hasName) {
-    return normalized;
+  normalized = normalized
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(
+      /(?:\n\n|\n)?(?:sincerely,?|best,?|kind regards,?|thanks,?)(?:\s+[A-Za-z][^\n]*)?(?:\n+[A-Za-z][^\n]*)*\s*$/i,
+      ""
+    )
+    .trim();
+
+  if (!normalized) {
+    normalized = "Thank you for considering my application.";
   }
 
-  const withoutDanglingClosing = normalized.replace(/\n\n?(sincerely,?|best,?)\s*$/i, "").trim();
-  return `${withoutDanglingClosing}\n\nSincerely,\n${candidateName}`;
+  return `${normalized}\n\nSincerely,\n${candidateName}`;
 }
 
 function buildResumeEvidenceContext(resume: Resume): string {
@@ -120,6 +125,13 @@ function buildRequirementsContext(jobRequirements?: JobRequirements): string {
   ].join("\n");
 }
 
+function sanitizeCompanyName(value: string): string {
+  return value
+    .replace(/^company\s*[:\-]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function extractStructuredJobSignals(
   client: OpenAI,
   jobDescription: string,
@@ -134,6 +146,7 @@ ${jobDescription}
 
 Return only valid JSON with this exact shape:
 {
+  "company_name": "",
   "title": "",
   "seniority_signals": [""],
   "required_skills": [""],
@@ -152,6 +165,7 @@ Rules:
 - tools_technologies should contain named tools, platforms, frameworks, libraries, and databases.
 - responsibilities should be action-oriented phrases.
 - domain_keywords should describe industry/problem-space terms.
+- company_name should be the employer name if it is identifiable from the description, otherwise "".
 - Do not invent requirements.`;
 
   const response = await client.chat.completions.create({
@@ -162,7 +176,11 @@ Rules:
   });
 
   const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
-  return StructuredJobSignalsSchema.parse(parsed);
+  const validated = StructuredJobSignalsSchema.parse(parsed);
+  return {
+    ...validated,
+    company_name: sanitizeCompanyName(validated.company_name),
+  };
 }
 
 async function generateTailoringDraft(
@@ -172,6 +190,7 @@ async function generateTailoringDraft(
   selectedBullets: ReturnType<typeof selectBulletsForRewrite>
 ): Promise<TailoringDraft> {
   const candidateName = resume.name?.trim() || "Candidate";
+  const companyName = signals.company_name?.trim();
   const bulletInventory = selectedBullets.map((bullet) => ({
     id: bullet.id,
     section: bullet.section,
@@ -200,6 +219,7 @@ Tasks:
 3. Write a concise, specific cover letter.
 
 Candidate name for the signature: ${candidateName}
+${companyName ? `Company name to mention naturally in the cover letter: ${companyName}` : "Company name was not confidently identified from the job description."}
 
 Non-negotiable rules:
 - Do not add new tools, technologies, metrics, achievements, responsibilities, or industries.
@@ -209,6 +229,8 @@ Non-negotiable rules:
 - Prefer minimal edits, stronger action verbs, and clearer outcomes.
 - If a bullet is already strong, return it unchanged.
 - Keep the output clean and ATS-friendly.
+- If a company name is provided, mention ${companyName || "the employer"} naturally in the opening or closing so the letter feels specific to that application.
+- If no company name is provided, do not invent one.
 - End the cover letter with exactly:
   Sincerely,
   ${candidateName}

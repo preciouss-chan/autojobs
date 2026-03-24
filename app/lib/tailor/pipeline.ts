@@ -459,7 +459,6 @@ function collectResumeEvidenceTerms(resume: Resume): Set<string> {
   resume.skills.frameworks_libraries.forEach(addTokens);
   resume.skills.tools.forEach(addTokens);
   resume.skills.professional_skills.forEach(addTokens);
-  resume.skills.target_role_keywords.forEach(addTokens);
 
   resume.experience.forEach((exp) => {
     addTokens(exp.role);
@@ -474,35 +473,6 @@ function collectResumeEvidenceTerms(resume: Resume): Set<string> {
   });
 
   return terms;
-}
-
-export function inferTargetRoleKeywords(
-  resume: Resume,
-  signals: StructuredJobSignals
-): string[] {
-  const existingTerms = new Set(
-    [
-      ...resume.skills.languages,
-      ...resume.skills.frameworks_libraries,
-      ...resume.skills.tools,
-      ...resume.skills.professional_skills,
-      ...resume.skills.target_role_keywords,
-    ].map((item) => normalizeTerm(item))
-  );
-
-  return uniq([
-    signals.title,
-    ...signals.required_skills,
-    ...signals.minimum_qualification_keywords,
-    ...signals.tools_technologies,
-    ...signals.preferred_skills,
-    ...signals.preferred_qualification_keywords,
-    ...signals.domain_keywords,
-    ...signals.responsibilities.slice(0, 6),
-  ]).filter((term) => {
-    const normalized = normalizeTerm(term);
-    return normalized.length > 1 && !existingTerms.has(normalized);
-  });
 }
 
 function collectProjectTechnologyTerms(resume: Resume, signals: StructuredJobSignals): string[] {
@@ -706,7 +676,6 @@ export function inferSupportedSkillsToAdd(
     frameworks_libraries: [],
     tools: [],
     professional_skills: [],
-    target_role_keywords: [],
   };
 
   const languageTerms = new Set(["javascript", "typescript", "python", "java", "sql", "go", "rust", "ruby", "php", "swift", "kotlin", "c", "c++", "c#"]);
@@ -746,14 +715,11 @@ export function inferSupportedSkillsToAdd(
     existingSkills.add(normalized);
   });
 
-  result.target_role_keywords = inferTargetRoleKeywords(resume, signals);
-
   return {
     languages: uniq(result.languages),
     frameworks_libraries: uniq(result.frameworks_libraries),
     tools: uniq(result.tools),
     professional_skills: uniq(result.professional_skills),
-    target_role_keywords: uniq(result.target_role_keywords),
   };
 }
 
@@ -918,10 +884,6 @@ export function applyResponseToResume(resume: Resume, response: TailorResponse):
     nextResume.skills.professional_skills,
     response.skills_to_add.professional_skills
   );
-  nextResume.skills.target_role_keywords = mergeSkillList(
-    nextResume.skills.target_role_keywords,
-    response.skills_to_add.target_role_keywords
-  );
 
   return nextResume;
 }
@@ -956,9 +918,6 @@ export function formatResumeAsText(resume: Resume): string {
   }
   if (resume.skills.professional_skills.length > 0) {
     lines.push(`Professional Skills: ${resume.skills.professional_skills.join(", ")}`);
-  }
-  if (resume.skills.target_role_keywords.length > 0) {
-    lines.push(`Target Role Keywords: ${resume.skills.target_role_keywords.join(", ")}`);
   }
   lines.push("");
 
@@ -1008,7 +967,6 @@ function extractSectionText(resume: Resume): {
       ...resume.skills.frameworks_libraries,
       ...resume.skills.tools,
       ...resume.skills.professional_skills,
-      ...resume.skills.target_role_keywords,
     ].join(" "),
     experience: resume.experience.flatMap((item) => [item.role, item.company, ...item.bullets]).join(" "),
     projects: resume.projects.flatMap((item) => [item.name, ...item.bullets]).join(" "),
@@ -1121,8 +1079,7 @@ export function buildImprovementNotes(response: {
     response.skillsToAdd.languages.length +
     response.skillsToAdd.frameworks_libraries.length +
     response.skillsToAdd.tools.length +
-    response.skillsToAdd.professional_skills.length +
-    response.skillsToAdd.target_role_keywords.length;
+    response.skillsToAdd.professional_skills.length;
   if (surfacedSkillsCount > 0) {
     notes.push(`Surfaced ${surfacedSkillsCount} existing capabilities in the skills section where the resume already supported them.`);
   }
@@ -1139,45 +1096,4 @@ export function buildImprovementNotes(response: {
   }
 
   return notes;
-}
-
-export function buildTargetedSummary(
-  resume: Resume,
-  signals: StructuredJobSignals,
-  skillsToAdd: TailorResponse["skills_to_add"],
-  bulletAnalysis: ResumeBulletAnalysis[]
-): string {
-  const strongestBullets = bulletAnalysis
-    .filter((item) => item.detected_keywords.length > 0)
-    .slice(0, 2);
-
-  const topSkills = uniq([
-    ...signals.required_skills,
-    ...signals.tools_technologies,
-    ...skillsToAdd.languages,
-    ...skillsToAdd.frameworks_libraries,
-    ...skillsToAdd.tools,
-  ]).slice(0, 4);
-
-  const openingParts = [
-    resume.education[0]?.degree ? `${resume.education[0].degree} candidate` : "Candidate",
-    signals.title ? `targeting ${signals.title} roles` : "with hands-on software experience",
-  ];
-
-  const firstSentence = `${openingParts.join(" ")} with experience in ${topSkills.join(", ") || "software development"}.`;
-
-  const evidenceSentence = strongestBullets.length > 0
-    ? `Highlights include ${strongestBullets
-        .map((item) => item.original_text.replace(/^[A-Z]/, (char) => char.toLowerCase()).replace(/\.$/, ""))
-        .join(" and ")}.`
-    : "Brings project and hands-on experience that aligns with the role requirements.";
-
-  const softSkills = skillsToAdd.professional_skills.slice(0, 3);
-  const closingSentence = softSkills.length > 0
-    ? `Also brings ${softSkills.join(", ").toLowerCase()} backed by real work across projects and experience.`
-    : signals.team_focus
-      ? `Interested in contributing to ${signals.team_focus.toLowerCase()} work with a strong ATS-aligned skills profile.`
-      : "Interested in contributing with relevant, ATS-aligned experience and skills.";
-
-  return [firstSentence, evidenceSentence, closingSentence].join(" ");
 }

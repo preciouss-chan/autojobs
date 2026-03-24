@@ -93,9 +93,6 @@ function buildTex(resume: any) {
     if (resume.skills.professional_skills?.length) {
       body += `\\textbf{Professional Skills:} ${escapeTex(resume.skills.professional_skills.join(", "))} \\\\ \n`;
     }
-    if (resume.skills.target_role_keywords?.length) {
-      body += `\\textbf{Target Role Keywords:} ${escapeTex(resume.skills.target_role_keywords.join(", "))} \\\\ \n`;
-    }
   }
 
   const footer = "\n\\end{document}";

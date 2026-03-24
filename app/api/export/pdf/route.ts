@@ -163,9 +163,6 @@ export async function POST(req: Request): Promise<NextResponse> {
         if (inputResume.skills.professional_skills?.length) {
           skillsArr.push(`Professional Skills: ${inputResume.skills.professional_skills.join(", ")}`);
         }
-        if (inputResume.skills.target_role_keywords?.length) {
-          skillsArr.push(`Target Role Keywords: ${inputResume.skills.target_role_keywords.join(", ")}`);
-        }
         if (skillsArr.length > 0) {
           estimatedHeight += 3 + 12 + 6; // Before + title + after section title
           skillsArr.forEach((skillLine) => {
@@ -202,6 +199,8 @@ export async function POST(req: Request): Promise<NextResponse> {
       const fittedResume = structuredClone(inputResume);
       const maxHeight = pageHeight - margin * 2;
 
+      fittedResume.summary = "";
+
       fittedResume.skills.languages = rankSkillsByEvidence(
         fittedResume,
         fittedResume.skills.languages
@@ -217,10 +216,6 @@ export async function POST(req: Request): Promise<NextResponse> {
       fittedResume.skills.professional_skills = rankSkillsByEvidence(
         fittedResume,
         fittedResume.skills.professional_skills
-      );
-      fittedResume.skills.target_role_keywords = rankSkillsByEvidence(
-        fittedResume,
-        fittedResume.skills.target_role_keywords
       );
 
       const compactSteps: Array<() => boolean> = [
@@ -246,18 +241,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           }
           return false;
         },
-        // Priority 3: Trim target role keywords
-        () => {
-          if (fittedResume.skills.target_role_keywords.length > 6) {
-            fittedResume.skills.target_role_keywords = rankSkillsByEvidence(
-              fittedResume,
-              fittedResume.skills.target_role_keywords
-            ).slice(0, 6);
-            return true;
-          }
-          return false;
-        },
-        // Priority 4: Trim frameworks_libraries
+        // Priority 3: Trim frameworks_libraries
         () => {
           if (fittedResume.skills.frameworks_libraries.length > 5) {
             fittedResume.skills.frameworks_libraries = rankSkillsByEvidence(
@@ -268,33 +252,13 @@ export async function POST(req: Request): Promise<NextResponse> {
           }
           return false;
         },
-        // Priority 5: Trim languages
+        // Priority 4: Trim languages
         () => {
           if (fittedResume.skills.languages.length > 5) {
             fittedResume.skills.languages = rankSkillsByEvidence(
               fittedResume,
               fittedResume.skills.languages
             ).slice(0, 5);
-            return true;
-          }
-          return false;
-        },
-        // Priority 5: remove lowest-priority project before dropping the summary
-        () => {
-          if (fittedResume.projects.length > 1) {
-            fittedResume.projects = fittedResume.projects.slice(0, -1);
-            return true;
-          }
-          return false;
-        },
-        // Priority 6: shorten summary only if still necessary
-        () => {
-          if (fittedResume.summary && fittedResume.summary.trim().length > 220) {
-            fittedResume.summary = `${fittedResume.summary.trim().slice(0, 217).trimEnd()}...`;
-            return true;
-          }
-          if (fittedResume.summary && fittedResume.summary.trim().length > 0) {
-            fittedResume.summary = "";
             return true;
           }
           return false;
@@ -512,9 +476,6 @@ export async function POST(req: Request): Promise<NextResponse> {
         }
         if (fittedResume.skills.professional_skills && fittedResume.skills.professional_skills.length > 0) {
           skillsArr.push(`Professional Skills: ${fittedResume.skills.professional_skills.join(", ")}`);
-        }
-        if (fittedResume.skills.target_role_keywords && fittedResume.skills.target_role_keywords.length > 0) {
-          skillsArr.push(`Target Role Keywords: ${fittedResume.skills.target_role_keywords.join(", ")}`);
         }
 
        if (skillsArr.length > 0) {

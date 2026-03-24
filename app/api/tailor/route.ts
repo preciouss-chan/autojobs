@@ -23,7 +23,6 @@ import {
   buildBulletEditMaps,
   buildChangedBullets,
   buildImprovementNotes,
-  buildTargetedSummary,
   findMissingKeywords,
   formatResumeAsText,
   inferSupportedSkillsToAdd,
@@ -679,20 +678,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     const editMaps = buildBulletEditMaps(resume, acceptedRewrites);
     const skillsToAdd = inferSupportedSkillsToAdd(resume, signals);
     const missingKeywords = findMissingKeywords(resume, signals);
-    const fallbackSummary = buildTargetedSummary(
-      resume,
-      signals,
-      skillsToAdd,
-      bulletAnalysis
-    );
-    const updatedSummary = tailoringDraft.updated_summary.trim();
-    const shouldUseFallbackSummary =
-      !updatedSummary ||
-      updatedSummary.toLowerCase() === resume.summary.trim().toLowerCase() ||
-      (signals.title && !updatedSummary.toLowerCase().includes(signals.title.toLowerCase()));
 
     const responseDraft: TailorResponse = {
-      updated_summary: shouldUseFallbackSummary ? fallbackSummary : updatedSummary,
+      updated_summary: tailoringDraft.updated_summary || resume.summary,
       experience_edits: editMaps.experienceEdits,
       project_edits: editMaps.projectEdits,
       skills_reframing: changedBullets.map((item) => ({

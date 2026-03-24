@@ -32,7 +32,7 @@ export function mergeResume(baseResume, edits) {
 
   // 4. Merge skills additions
   if (edits.skills_to_add) {
-    const sections = ["languages", "frameworks_libraries", "tools"];
+    const sections = ["languages", "frameworks_libraries", "tools", "professional_skills"];
     for (const section of sections) {
       if (edits.skills_to_add[section]) {
         const newSkills = edits.skills_to_add[section];
@@ -47,4 +47,3 @@ export function mergeResume(baseResume, edits) {
 
   return updatedResume;
 }
-

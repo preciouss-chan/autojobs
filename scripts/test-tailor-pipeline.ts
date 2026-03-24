@@ -168,16 +168,16 @@ function run(): void {
   );
   assert.ok(skillsToAdd.tools.includes("OpenAI"), "project technologies should be surfaced into the skills section");
   assert.ok(
+    skillsToAdd.tools.includes("Docker"),
+    "job keywords should be surfaced into the skills section even when they are not yet evidenced elsewhere"
+  );
+  assert.ok(
     skillsToAdd.professional_skills.some((item) => item.toLowerCase() === "teamwork"),
     "supported soft skills should be surfaced into a dedicated professional skills category"
   );
   assert.ok(
-    skillsToAdd.professional_skills.some((item) => item.toLowerCase() === "cross-functional collaboration"),
-    "minimum qualification keywords should be considered when surfacing supported professional skills"
-  );
-  assert.ok(
-    missingKeywords.some((item) => item.keyword === "Docker"),
-    "unsupported requested tools should be surfaced as gaps"
+    missingKeywords.length === 0,
+    "missing keyword gaps should be empty after removing resume evidence gating"
   );
 
   const response: TailorResponse = {

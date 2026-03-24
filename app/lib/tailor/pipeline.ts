@@ -531,11 +531,6 @@ function inferProfessionalSkills(resume: Resume, signals: StructuredJobSignals):
   ]).filter((term) => !KNOWN_TECH_TERMS.includes(normalizeTerm(term)));
 
   jobProfessionalTerms.forEach((term) => {
-    if (termSupported(term, collectResumeEvidenceTerms(resume))) {
-      inferred.add(titleCaseLabel(term));
-      return;
-    }
-
     if (tokenOverlapScore(text, [term]) >= 0.5) {
       inferred.add(titleCaseLabel(term));
       return;
@@ -644,24 +639,10 @@ export function acceptBulletRewrites(
   return accepted;
 }
 
-function termSupported(term: string, evidenceTerms: Set<string>): boolean {
-  const normalized = normalizeTerm(term);
-  if (!normalized) {
-    return true;
-  }
-
-  if (evidenceTerms.has(normalized)) {
-    return true;
-  }
-
-  return tokenize(term).every((token) => evidenceTerms.has(token));
-}
-
 export function inferSupportedSkillsToAdd(
   resume: Resume,
   signals: StructuredJobSignals
 ): TailorResponse["skills_to_add"] {
-  const evidenceTerms = collectResumeEvidenceTerms(resume);
   const existingSkills = new Set(
     [
       ...resume.skills.languages,
@@ -682,7 +663,7 @@ export function inferSupportedSkillsToAdd(
 
   const maybeAdd = (skill: string): void => {
     const normalized = normalizeTerm(skill);
-    if (!normalized || existingSkills.has(normalized) || !termSupported(skill, evidenceTerms)) {
+    if (!normalized || existingSkills.has(normalized) ) {
       return;
     }
 
@@ -727,34 +708,9 @@ export function findMissingKeywords(
   resume: Resume,
   signals: StructuredJobSignals
 ): MissingKeyword[] {
-  const evidenceTerms = collectResumeEvidenceTerms(resume);
-  const gaps: MissingKeyword[] = [];
-
-  const inspect = (
-    terms: string[],
-    category: MissingKeyword["category"],
-    reasonPrefix: string
-  ): void => {
-    for (const term of uniq(terms)) {
-      if (!term || termSupported(term, evidenceTerms)) {
-        continue;
-      }
-
-      gaps.push({
-        keyword: term,
-        category,
-        reason: `${reasonPrefix}; no direct support found in the current resume.`,
-      });
-    }
-  };
-
-  inspect(signals.required_skills, "required_skill", "Required skill is missing");
-  inspect(signals.preferred_skills, "preferred_skill", "Preferred skill is not currently supported");
-  inspect(signals.tools_technologies, "tool", "Requested tool or technology is not currently supported");
-  inspect(signals.responsibilities.slice(0, 6), "responsibility", "Responsibility is not directly evidenced");
-  inspect(signals.domain_keywords.slice(0, 6), "domain", "Domain keyword is not directly evidenced");
-
-  return gaps.slice(0, 12);
+  void resume;
+  void signals;
+  return [];
 }
 
 export function buildBulletEditMaps(

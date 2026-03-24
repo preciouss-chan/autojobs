@@ -124,7 +124,7 @@ export function mergeResume(baseResume: Resume, edits: Record<string, unknown>):
 
   // 4. Merge skills additions
   if (editsTyped.skills_to_add) {
-    const skillSections = ["languages", "frameworks_libraries", "tools"] as const;
+    const skillSections = ["languages", "frameworks_libraries", "tools", "professional_skills"] as const;
 
     for (const section of skillSections) {
       if (editsTyped.skills_to_add[section]) {

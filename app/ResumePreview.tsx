@@ -148,6 +148,11 @@ export default function ResumePreview({ resume }: ResumePreviewProps): React.Rea
                 <span className="font-semibold">Professional Skills:</span> {resume.skills.professional_skills.join(", ")}
               </div>
             )}
+            {resume.skills.target_role_keywords && resume.skills.target_role_keywords.length > 0 && (
+              <div className="text-sm">
+                <span className="font-semibold">Target Role Keywords:</span> {resume.skills.target_role_keywords.join(", ")}
+              </div>
+            )}
           </div>
         </section>
       )}

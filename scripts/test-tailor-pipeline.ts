@@ -3,8 +3,10 @@ import {
   acceptBulletRewrites,
   analyzeAtsOptimization,
   applyResponseToResume,
+  buildBulletAnalysis,
   buildBulletEditMaps,
   buildImprovementNotes,
+  buildTargetedSummary,
   buildChangedBullets,
   findMissingKeywords,
   formatResumeAsText,
@@ -13,6 +15,7 @@ import {
   selectBulletsForRewrite,
 } from "@/app/lib/tailor/pipeline";
 import type { Resume, StructuredJobSignals, TailorResponse } from "@/app/lib/schemas";
+import { mergeResume } from "@/app/utils/mergeResume";
 
 function sanitizeCoverLetterForTest(rawText: string, candidateName: string): string {
   const cleaned = rawText
@@ -78,6 +81,7 @@ const resume: Resume = {
     frameworks_libraries: ["React", "Next.js"],
     tools: ["Git", "PostgreSQL"],
     professional_skills: ["Communication"],
+    target_role_keywords: [],
   },
   experience: [
     {
@@ -161,6 +165,7 @@ function run(): void {
   const editMaps = buildBulletEditMaps(resume, acceptedRewrites);
   const skillsToAdd = inferSupportedSkillsToAdd(resume, signals);
   const missingKeywords = findMissingKeywords(resume, signals);
+  const fallbackSummary = buildTargetedSummary(resume, signals, skillsToAdd, buildBulletAnalysis(parsedBullets));
 
   assert.ok(
     skillsToAdd.frameworks_libraries.includes("Flask"),
@@ -174,6 +179,14 @@ function run(): void {
   assert.ok(
     skillsToAdd.professional_skills.some((item) => item.toLowerCase() === "cross-functional collaboration"),
     "minimum qualification keywords should be considered when surfacing supported professional skills"
+  );
+  assert.ok(
+    skillsToAdd.target_role_keywords.includes("REST APIs"),
+    "job-description keywords should be surfaced into the labeled target role keyword category"
+  );
+  assert.ok(
+    fallbackSummary.toLowerCase().includes("frontend engineer"),
+    "fallback summary should include the target role so the exported resume changes by job"
   );
   assert.ok(
     missingKeywords.some((item) => item.keyword === "Docker"),
@@ -233,10 +246,24 @@ function run(): void {
   assert.ok(formatted.includes("SUMMARY"), "formatted resume should preserve section headings");
   assert.ok(formatted.includes("- Built React and Next.js onboarding workflows"), "formatted resume should remain plain-text bullet based");
   assert.ok(formatted.includes("Professional Skills:"), "formatted resume should include expanded skill categories when present");
+  assert.ok(formatted.includes("Target Role Keywords:"), "formatted resume should include target role keywords when present");
   assert.equal(/[\t]|[•]|<table/i.test(formatted), false, "output should remain ATS-friendly plain text");
   assert.ok(atsAnalysis.score > 0, "ATS analysis should return a numeric score");
   assert.ok(atsAnalysis.section_coverage.summary.includes("Frontend Engineer"), "ATS analysis should track title coverage in the summary");
   assert.ok(atsAnalysis.optimization_tips.length > 0, "ATS analysis should produce actionable optimization tips");
+
+  const mergedResume = mergeResume(resume, {
+    updated_summary: response.updated_summary,
+    skills_to_add: skillsToAdd,
+  });
+  assert.ok(
+    mergedResume.skills.professional_skills.includes("Teamwork"),
+    "mergeResume should preserve newly added professional skills"
+  );
+  assert.ok(
+    mergedResume.skills.target_role_keywords.includes("REST APIs"),
+    "mergeResume should preserve added target role keywords"
+  );
 
   const cleanedCoverLetter = sanitizeCoverLetterForTest(
     "Dear Hiring Manager,\n\nBody paragraph here.\n\nSincerely, Precious Nyaupane\n\nSincerely,\n[Your Name]",

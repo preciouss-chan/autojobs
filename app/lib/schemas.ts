@@ -35,6 +35,7 @@ export const SkillsSchema = z.object({
   frameworks_libraries: z.array(z.string()).default([]),
   tools: z.array(z.string()).default([]),
   professional_skills: z.array(z.string()).default([]),
+  target_role_keywords: z.array(z.string()).default([]),
 });
 
 export const ResumeSchema = z.object({
@@ -179,7 +180,7 @@ export const TailorResponseSchema = z.object({
   skills_reframing: z
     .array(
       z.object({
-        category: z.enum(["languages", "frameworks_libraries", "tools", "professional_skills", "experience"]),
+        category: z.enum(["languages", "frameworks_libraries", "tools", "professional_skills", "target_role_keywords", "experience"]),
         original: z.string(),
         tailored: z.string(),
         evidence: z.string(),
@@ -192,8 +193,9 @@ export const TailorResponseSchema = z.object({
       frameworks_libraries: z.array(z.string()).default([]),
       tools: z.array(z.string()).default([]),
       professional_skills: z.array(z.string()).default([]),
+      target_role_keywords: z.array(z.string()).default([]),
     })
-    .default(() => ({ languages: [], frameworks_libraries: [], tools: [], professional_skills: [] })),
+    .default(() => ({ languages: [], frameworks_libraries: [], tools: [], professional_skills: [], target_role_keywords: [] })),
   job_signals: StructuredJobSignalsSchema,
   bullet_analysis: z.array(ResumeBulletAnalysisSchema).default([]),
   changed_bullets: z.array(ChangedBulletSchema).default([]),

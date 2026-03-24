@@ -433,11 +433,13 @@ Non-negotiable rules:
 - Keep every rewritten bullet as a single plain-text bullet line.
 - Preserve the factual meaning of the original bullet.
 - Prefer minimal edits, stronger action verbs, and clearer outcomes.
+- Quantify and show impact on bullet points if not done already.
 - If a bullet is already strong, return it unchanged.
 - Keep the output clean and ATS-friendly.
 - Make the summary ATS-aware: mirror the target title and strongest supported hard skills naturally, without copying the job description verbatim.
 - Favor keywords that appear in the title, required skills, tools/technologies, and recurring responsibilities.
-- Balance hard skills with soft-skill evidence only when those soft skills are already shown by the resume bullets.
+- Balance hard skills with soft-skills.
+- Add skills_to_add to the skills section.
 - If a company name is provided, mention ${companyName || "the employer"} naturally in the opening or closing so the letter feels specific to that application.
 - If no company name is provided, do not invent one.
 - Make the cover letter roughly 180-260 words.

@@ -106,6 +106,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const edits = await tailorRes.json();
         console.log("✅ Tailor API success, received edits");
         console.log("📋 Edits keys:", Object.keys(edits));
+        
+        // Debug: log skills_to_add
+        console.log("🎯 Skills to add:", JSON.stringify(edits.skills_to_add, null, 2));
+        
         console.log("📝 Cover letter present:", !!edits.cover_letter);
         console.log("📝 Cover letter length:", edits.cover_letter?.length || 0);
 
@@ -128,6 +132,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         // Merge
         const mergedResume = mergeResume(baseResume, edits);
+        
+        // Debug: log merged resume skills
+        console.log("🔍 Merged resume skills:", JSON.stringify(mergedResume.skills, null, 2));
 
         // Call PDF API (no API key needed for PDF generation)
         console.log("📄 Generating PDF...");
@@ -156,7 +163,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         console.log("📥 Tailored resume saved to storage.");
 
-        sendResponse({ ok: true });
+        sendResponse({
+          ok: true,
+          debug: {
+            skillsToAdd: edits.skills_to_add || null,
+            mergedSkills: mergedResume.skills || null,
+          },
+        });
       } catch (err) {
         console.error("MAKE_RESUME Error:", err);
         sendResponse({ error: String(err) });

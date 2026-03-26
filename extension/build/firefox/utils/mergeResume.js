@@ -1,5 +1,11 @@
 export function mergeResume(baseResume, edits) {
   const updatedResume = structuredClone(baseResume);
+  updatedResume.skills ??= {
+    languages: [],
+    frameworks_libraries: [],
+    tools: [],
+    professional_skills: [],
+  };
 
   // 1. Merge updated summary
   if (edits.updated_summary && edits.updated_summary.trim() !== "") {
@@ -34,6 +40,8 @@ export function mergeResume(baseResume, edits) {
   if (edits.skills_to_add) {
     const sections = ["languages", "frameworks_libraries", "tools", "professional_skills"];
     for (const section of sections) {
+      updatedResume.skills[section] ??= [];
+
       if (edits.skills_to_add[section]) {
         const newSkills = edits.skills_to_add[section];
         for (const skill of newSkills) {

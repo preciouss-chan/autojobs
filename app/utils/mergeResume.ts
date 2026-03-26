@@ -70,6 +70,12 @@ function findBestMatch<T extends Project | Experience>(
  */
 export function mergeResume(baseResume: Resume, edits: Record<string, unknown>): Resume {
   const updatedResume = structuredClone(baseResume);
+  updatedResume.skills ??= {
+    languages: [],
+    frameworks_libraries: [],
+    tools: [],
+    professional_skills: [],
+  };
 
   // Type guard for edits
   const editsTyped = edits as {
@@ -127,6 +133,8 @@ export function mergeResume(baseResume: Resume, edits: Record<string, unknown>):
     const skillSections = ["languages", "frameworks_libraries", "tools", "professional_skills"] as const;
 
     for (const section of skillSections) {
+      updatedResume.skills[section] ??= [];
+
       if (editsTyped.skills_to_add[section]) {
         const newSkills = editsTyped.skills_to_add[section];
 

@@ -277,6 +277,9 @@ document.getElementById("generate").addEventListener("click", async () => {
       }
       return;
     }
+
+    console.log("🎯 MAKE_RESUME debug skills_to_add:", resp.debug?.skillsToAdd || null);
+    console.log("🔍 MAKE_RESUME debug merged skills:", resp.debug?.mergedSkills || null);
     
     const message = "Resume tailored and saved!";
     

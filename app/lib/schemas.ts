@@ -221,6 +221,23 @@ export const ExportPDFRequestSchema = z.object({
   experience: z.array(ExperienceSchema).default([]),
   education: z.array(EducationSchema).default([]),
   skills: SkillsSchema,
+  tailor_metadata: z
+    .object({
+      skills_to_add: z
+        .object({
+          languages: z.array(z.string()).default([]),
+          frameworks_libraries: z.array(z.string()).default([]),
+          tools: z.array(z.string()).default([]),
+          professional_skills: z.array(z.string()).default([]),
+        })
+        .default(() => ({
+          languages: [],
+          frameworks_libraries: [],
+          tools: [],
+          professional_skills: [],
+        })),
+    })
+    .optional(),
 });
 
 export const ErrorResponseSchema = z.object({

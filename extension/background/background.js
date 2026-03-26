@@ -197,7 +197,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const pdfRes = await fetch(`${BASE_URL}/api/export/pdf`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(mergedResume)
+          body: JSON.stringify({
+            ...mergedResume,
+            tailor_metadata: {
+              skills_to_add: edits.skills_to_add || {
+                languages: [],
+                frameworks_libraries: [],
+                tools: [],
+                professional_skills: [],
+              },
+            },
+          })
         });
 
         if (!pdfRes.ok) {

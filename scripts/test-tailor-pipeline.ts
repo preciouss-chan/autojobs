@@ -117,9 +117,9 @@ const signals: StructuredJobSignals = {
   seniority_signals: ["mid-level"],
   required_skills: ["TypeScript", "React"],
   preferred_skills: ["A/B testing"],
-  minimum_qualification_keywords: ["REST APIs", "Cross-functional collaboration"],
-  preferred_qualification_keywords: ["Experimentation"],
-  tools_technologies: ["Next.js", "PostgreSQL", "Docker"],
+  minimum_qualification_keywords: ["REST APIs", "Cross-functional collaboration", "Strong programming skills in Python"],
+  preferred_qualification_keywords: ["Experimentation", "Experience with containers (Docker)", "Coursework or project experience with LangChain"],
+  tools_technologies: ["Next.js", "PostgreSQL", "Docker", "Spark", "Kafka"],
   responsibilities: ["build user-facing features", "improve onboarding flows"],
   domain_keywords: ["product", "experimentation"],
   years_experience: 2,
@@ -173,6 +173,18 @@ function run(): void {
   assert.ok(
     skillsToAdd.tools.includes("Docker"),
     "job keywords should be surfaced into the skills section even when they are not yet evidenced elsewhere"
+  );
+  assert.ok(
+    skillsToAdd.frameworks_libraries.includes("LangChain"),
+    "known technologies should be extracted from longer qualification phrases"
+  );
+  assert.ok(
+    !skillsToAdd.tools.includes("Strong programming skills in Python"),
+    "instructional phrases should not be surfaced as tools"
+  );
+  assert.ok(
+    !skillsToAdd.frameworks_libraries.includes("Ph.D. in Computer Science"),
+    "education phrases should not be surfaced as frameworks"
   );
   assert.equal(
     skillsToAdd.professional_skills.length,

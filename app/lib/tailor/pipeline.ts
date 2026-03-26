@@ -129,11 +129,84 @@ const KNOWN_TECH_TERMS = uniq([
   "android studio",
   "openai",
   "gpt-3.5",
+  "gpt-4",
   "aws",
+  "docker",
+  "spark",
+  "kafka",
+  "flink",
+  "langchain",
+  "rag",
+  "rag architectures",
+  "vector database",
+  "vector databases",
+  "anthropic",
+  "google",
+  "llms",
+  "large language models",
+  "machine learning",
+  "data engineering",
+  "distributed systems",
+  "backend development",
   "colyseus",
   "vr",
   "rest api",
 ]);
+
+const CANONICAL_SKILL_LABELS: Record<string, string> = {
+  javascript: "JavaScript",
+  typescript: "TypeScript",
+  python: "Python",
+  java: "Java",
+  sql: "SQL",
+  c: "C",
+  "c++": "C++",
+  "c#": "C#",
+  kotlin: "Kotlin",
+  react: "React",
+  "react-native": "React Native",
+  "next.js": "Next.js",
+  nextjs: "Next.js",
+  flask: "Flask",
+  django: "Django",
+  "django rest": "Django REST",
+  matplotlib: "Matplotlib",
+  sklearn: "scikit-learn",
+  "scikit-learn": "scikit-learn",
+  pandas: "pandas",
+  git: "Git",
+  unity: "Unity",
+  "android studio": "Android Studio",
+  openai: "OpenAI",
+  "gpt-3.5": "GPT-3.5",
+  "gpt-4": "GPT-4",
+  aws: "AWS",
+  docker: "Docker",
+  spark: "Spark",
+  kafka: "Kafka",
+  flink: "Flink",
+  langchain: "LangChain",
+  rag: "RAG",
+  "rag architectures": "RAG architectures",
+  "vector database": "vector databases",
+  "vector databases": "vector databases",
+  anthropic: "Anthropic",
+  google: "Google",
+  llms: "LLMs",
+  "large language models": "LLMs",
+  "machine learning": "Machine Learning",
+  "data engineering": "Data Engineering",
+  "distributed systems": "Distributed Systems",
+  "backend development": "Backend Development",
+  api: "APIs",
+  "rest api": "REST APIs",
+};
+
+const SKILL_NOISE_PATTERNS = [
+  /\b(currently|recently|soon|passionate|comfortable|eager|interest|understanding|learning|learn|graduate|graduated|completing|mentorship|coursework|academic|project experience|real-world|at scale|related field|nice-to-have|plus|preferred)\b/i,
+  /\bph\.?d\b|\bms\b|\bmaster'?s\b|\bbachelor'?s\b|\bdegree\b/i,
+  /\bwhat you'?ll do\b|\brequirements\b|\bbenefits\b|\brole summary\b/i,
+];
 
 const PROFESSIONAL_SKILL_PATTERNS: Record<string, RegExp[]> = {
   teamwork: [/\bteam(work)?\b/i, /cross-functional/i, /collaborat/i, /worked with/i],
@@ -174,6 +247,67 @@ function titleCaseLabel(value: string): string {
 
 function uniq(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function canonicalSkillLabel(value: string): string {
+  const normalized = normalizeTerm(value);
+  return CANONICAL_SKILL_LABELS[normalized] || titleCaseLabel(value);
+}
+
+function isLikelyNoiseSkill(value: string): boolean {
+  const normalized = normalizeTerm(value);
+  if (!normalized) {
+    return true;
+  }
+
+  if (SKILL_NOISE_PATTERNS.some((pattern) => pattern.test(value))) {
+    return true;
+  }
+
+  const tokens = tokenize(value);
+  if (tokens.length === 0 || tokens.length > 4) {
+    return true;
+  }
+
+  return false;
+}
+
+function extractSkillCandidates(value: string): string[] {
+  const normalized = normalizeTerm(value);
+  if (!normalized) {
+    return [];
+  }
+
+  const candidates = new Set<string>();
+  if (KNOWN_TECH_TERMS.includes(normalized)) {
+    candidates.add(canonicalSkillLabel(normalized));
+  }
+
+  KNOWN_TECH_TERMS.forEach((term) => {
+    const normalizedTerm = normalizeTerm(term);
+    if (!normalizedTerm || normalizedTerm.length < 2) {
+      return;
+    }
+
+    const matchesWholePhrase = normalized === normalizedTerm;
+    const matchesWithinPhrase = normalized.includes(normalizedTerm)
+      && /[a-z0-9+#./-]/.test(normalizedTerm)
+      && normalizedTerm.length >= 3;
+
+    if (matchesWholePhrase || matchesWithinPhrase) {
+      candidates.add(canonicalSkillLabel(normalizedTerm));
+    }
+  });
+
+  if (candidates.size > 0) {
+    return Array.from(candidates);
+  }
+
+  if (isLikelyNoiseSkill(value)) {
+    return [];
+  }
+
+  return Array.from(candidates);
 }
 
 function extractMetricTokens(text: string): string[] {
@@ -589,21 +723,35 @@ export function inferSupportedSkillsToAdd(
   };
 
   const languageTerms = new Set(["javascript", "typescript", "python", "java", "sql", "go", "rust", "ruby", "php", "swift", "kotlin", "c", "c++", "c#"]);
+  const frameworkTerms = new Set([
+    "react",
+    "react-native",
+    "next.js",
+    "nextjs",
+    "flask",
+    "django",
+    "django rest",
+    "bootstrap",
+    "matplotlib",
+    "scikit-learn",
+    "sklearn",
+    "pandas",
+    "unity",
+    "langchain",
+  ]);
 
   const maybeAdd = (skill: string): void => {
     const normalized = normalizeTerm(skill);
-    if (!normalized || existingSkills.has(normalized) ) {
+    if (!normalized || existingSkills.has(normalized)) {
       return;
     }
 
     if (languageTerms.has(normalized)) {
-      result.languages.push(skill);
-    } else if (skill.includes(".") || skill.includes("React") || skill.includes("Next") || skill.includes("Node") || skill.includes("Vue") || skill.includes("Angular") || skill.includes("Django") || skill.includes("Flask")) {
-      result.frameworks_libraries.push(skill);
-    } else if (!KNOWN_TECH_TERMS.includes(normalized) && signals.responsibilities.some((item) => normalizeTerm(item) === normalized)) {
-      result.professional_skills.push(titleCaseLabel(skill));
+      result.languages.push(canonicalSkillLabel(normalized));
+    } else if (frameworkTerms.has(normalized)) {
+      result.frameworks_libraries.push(canonicalSkillLabel(normalized));
     } else {
-      result.tools.push(skill);
+      result.tools.push(canonicalSkillLabel(normalized));
     }
     existingSkills.add(normalized);
   };
@@ -614,7 +762,8 @@ export function inferSupportedSkillsToAdd(
     ...signals.tools_technologies,
     ...signals.preferred_skills,
     ...signals.preferred_qualification_keywords,
-  ].forEach(maybeAdd);
+  ].flatMap(extractSkillCandidates).forEach(maybeAdd);
+
   return {
     languages: uniq(result.languages),
     frameworks_libraries: uniq(result.frameworks_libraries),

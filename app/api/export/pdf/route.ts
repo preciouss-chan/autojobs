@@ -28,7 +28,11 @@ function countOccurrences(text: string, needle: string): number {
   return matches ? matches.length : 0;
 }
 
-function rankSkillsByEvidence(resume: Resume, skills: string[]): string[] {
+function rankSkillsByEvidence(
+  resume: Resume,
+  skills: string[],
+  prioritizedSkills: string[] = []
+): string[] {
   const evidenceText = [
     resume.summary,
     ...resume.experience.flatMap((exp) => [exp.role, exp.company, ...(exp.bullets ?? [])]),
@@ -39,9 +43,18 @@ function rankSkillsByEvidence(resume: Resume, skills: string[]): string[] {
     .join(" \n ")
     .toLowerCase();
 
+  const prioritized = new Set(prioritizedSkills.map(normalizeSkillValue));
+
   return [...skills].sort((left, right) => {
     const leftNormalized = normalizeSkillValue(left);
     const rightNormalized = normalizeSkillValue(right);
+    const leftPriority = prioritized.has(leftNormalized) ? 1 : 0;
+    const rightPriority = prioritized.has(rightNormalized) ? 1 : 0;
+
+    if (rightPriority !== leftPriority) {
+      return rightPriority - leftPriority;
+    }
+
     const leftCount = countOccurrences(evidenceText, leftNormalized);
     const rightCount = countOccurrences(evidenceText, rightNormalized);
 
@@ -58,6 +71,12 @@ export async function POST(req: Request): Promise<NextResponse> {
     // Validate request body
     const body = await req.json();
     const resume = ExportPDFRequestSchema.parse(body);
+    const prioritizedSkills = resume.tailor_metadata?.skills_to_add ?? {
+      languages: [],
+      frameworks_libraries: [],
+      tools: [],
+      professional_skills: [],
+    };
 
     // Create PDF document (Letter size: 8.5 x 11 inches)
     const doc = new jsPDF({
@@ -203,19 +222,23 @@ export async function POST(req: Request): Promise<NextResponse> {
 
       fittedResume.skills.languages = rankSkillsByEvidence(
         fittedResume,
-        fittedResume.skills.languages
+        fittedResume.skills.languages,
+        prioritizedSkills.languages
       );
       fittedResume.skills.frameworks_libraries = rankSkillsByEvidence(
         fittedResume,
-        fittedResume.skills.frameworks_libraries
+        fittedResume.skills.frameworks_libraries,
+        prioritizedSkills.frameworks_libraries
       );
       fittedResume.skills.tools = rankSkillsByEvidence(
         fittedResume,
-        fittedResume.skills.tools
+        fittedResume.skills.tools,
+        prioritizedSkills.tools
       );
       fittedResume.skills.professional_skills = rankSkillsByEvidence(
         fittedResume,
-        fittedResume.skills.professional_skills
+        fittedResume.skills.professional_skills,
+        prioritizedSkills.professional_skills
       );
 
       const compactSteps: Array<() => boolean> = [
@@ -224,7 +247,8 @@ export async function POST(req: Request): Promise<NextResponse> {
           if (fittedResume.skills.tools.length > 4) {
             fittedResume.skills.tools = rankSkillsByEvidence(
               fittedResume,
-              fittedResume.skills.tools
+              fittedResume.skills.tools,
+              prioritizedSkills.tools
             ).slice(0, 4);
             return true;
           }
@@ -235,7 +259,8 @@ export async function POST(req: Request): Promise<NextResponse> {
           if (fittedResume.skills.professional_skills.length > 4) {
             fittedResume.skills.professional_skills = rankSkillsByEvidence(
               fittedResume,
-              fittedResume.skills.professional_skills
+              fittedResume.skills.professional_skills,
+              prioritizedSkills.professional_skills
             ).slice(0, 4);
             return true;
           }
@@ -246,7 +271,8 @@ export async function POST(req: Request): Promise<NextResponse> {
           if (fittedResume.skills.frameworks_libraries.length > 5) {
             fittedResume.skills.frameworks_libraries = rankSkillsByEvidence(
               fittedResume,
-              fittedResume.skills.frameworks_libraries
+              fittedResume.skills.frameworks_libraries,
+              prioritizedSkills.frameworks_libraries
             ).slice(0, 5);
             return true;
           }
@@ -257,7 +283,8 @@ export async function POST(req: Request): Promise<NextResponse> {
           if (fittedResume.skills.languages.length > 5) {
             fittedResume.skills.languages = rankSkillsByEvidence(
               fittedResume,
-              fittedResume.skills.languages
+              fittedResume.skills.languages,
+              prioritizedSkills.languages
             ).slice(0, 5);
             return true;
           }

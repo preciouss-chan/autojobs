@@ -140,7 +140,7 @@ export default function ResumePreview({ resume }: ResumePreviewProps): React.Rea
             )}
             {resume.skills.tools && resume.skills.tools.length > 0 && (
               <div className="text-sm">
-                <span className="font-semibold">Tools:</span> {resume.skills.tools.join(", ")}
+                <span className="font-semibold">Technologies:</span> {resume.skills.tools.join(", ")}
               </div>
             )}
             {resume.skills.professional_skills && resume.skills.professional_skills.length > 0 && (

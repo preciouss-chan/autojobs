@@ -177,7 +177,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           skillsArr.push(`Frameworks: ${inputResume.skills.frameworks_libraries.join(", ")}`);
         }
         if (inputResume.skills.tools?.length) {
-          skillsArr.push(`Tools: ${inputResume.skills.tools.join(", ")}`);
+          skillsArr.push(`Technologies: ${inputResume.skills.tools.join(", ")}`);
         }
         if (inputResume.skills.professional_skills?.length) {
           skillsArr.push(`Professional Skills: ${inputResume.skills.professional_skills.join(", ")}`);
@@ -499,7 +499,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           skillsArr.push(`Frameworks: ${fittedResume.skills.frameworks_libraries.join(", ")}`);
         }
         if (fittedResume.skills.tools && fittedResume.skills.tools.length > 0) {
-          skillsArr.push(`Tools: ${fittedResume.skills.tools.join(", ")}`);
+          skillsArr.push(`Technologies: ${fittedResume.skills.tools.join(", ")}`);
         }
         if (fittedResume.skills.professional_skills && fittedResume.skills.professional_skills.length > 0) {
           skillsArr.push(`Professional Skills: ${fittedResume.skills.professional_skills.join(", ")}`);

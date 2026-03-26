@@ -160,7 +160,7 @@ function buildResumeEvidenceContext(resume: Resume): string {
     lines.push(`Frameworks/Libraries: ${resume.skills.frameworks_libraries.join(", ")}`);
   }
   if (resume.skills.tools.length > 0) {
-    lines.push(`Tools: ${resume.skills.tools.join(", ")}`);
+    lines.push(`Technologies: ${resume.skills.tools.join(", ")}`);
   }
   if (resume.skills.professional_skills.length > 0) {
     lines.push(`Professional Skills: ${resume.skills.professional_skills.join(", ")}`);

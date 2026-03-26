@@ -51,7 +51,7 @@ ${bullets}
   const skills = `
 \\hspace{8pt}\\textbf{Languages:} ${esc(resume.skills.languages.join(", "))} \\\\
 \\hspace*{8pt}\\textbf{Frameworks:} ${esc(resume.skills.frameworks_libraries.join(", "))} \\\\
-\\hspace*{8pt}\\textbf{Tools:} ${esc(resume.skills.tools.join(", "))}
+\\hspace*{8pt}\\textbf{Technologies:} ${esc(resume.skills.tools.join(", "))}
 `;
 
   const ed = resume.education?.[0] || {};
@@ -134,4 +134,3 @@ ${skills}
 \\end{document}
 `;
 }
-

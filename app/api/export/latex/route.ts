@@ -89,7 +89,7 @@ function buildTex(resume: any) {
     body += `\\section*{Skills}\n`;
     body += `\\textbf{Languages:} ${escapeTex(resume.skills.languages.join(", "))} \\\\ \n`;
     body += `\\textbf{Frameworks:} ${escapeTex(resume.skills.frameworks_libraries.join(", "))} \\\\ \n`;
-    body += `\\textbf{Tools:} ${escapeTex(resume.skills.tools.join(", "))} \\\\ \n`;
+    body += `\\textbf{Technologies:} ${escapeTex(resume.skills.tools.join(", "))} \\\\ \n`;
     if (resume.skills.professional_skills?.length) {
       body += `\\textbf{Professional Skills:} ${escapeTex(resume.skills.professional_skills.join(", "))} \\\\ \n`;
     }

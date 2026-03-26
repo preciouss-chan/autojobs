@@ -119,7 +119,7 @@ Name: ${candidateName}`;
           systemPrompt += `\n- Frameworks: ${resume.skills.frameworks_libraries.join(", ")}`;
         }
         if (resume.skills.tools && resume.skills.tools.length > 0) {
-          systemPrompt += `\n- Tools: ${resume.skills.tools.join(", ")}`;
+          systemPrompt += `\n- Technologies: ${resume.skills.tools.join(", ")}`;
         }
       }
       systemPrompt += `\n=== END MY BACKGROUND ===`;
@@ -199,4 +199,3 @@ NEVER give generic answers. ALWAYS be specific with names, numbers, and details 
     );
   }
 }
-

@@ -208,6 +208,14 @@ const SKILL_NOISE_PATTERNS = [
   /\bwhat you'?ll do\b|\brequirements\b|\bbenefits\b|\brole summary\b/i,
 ];
 
+const PROFESSIONAL_SKILL_KEYWORDS: Record<string, string[]> = {
+  communication: ["communication", "communicate", "present", "presentation", "stakeholder"],
+  teamwork: ["teamwork", "team player", "collaboration", "collaborate", "cross-functional"],
+  leadership: ["leadership", "lead", "ownership", "mentor", "mentorship"],
+  "problem-solving": ["problem solving", "problem-solving", "solve problems", "analytical thinking"],
+  adaptability: ["adaptability", "adapt", "fast-paced", "ambiguity"],
+};
+
 const PROFESSIONAL_SKILL_PATTERNS: Record<string, RegExp[]> = {
   teamwork: [/\bteam(work)?\b/i, /cross-functional/i, /collaborat/i, /worked with/i],
   communication: [/communicat/i, /present/i, /feedback/i, /stakeholder/i],
@@ -306,6 +314,33 @@ function extractSkillCandidates(value: string): string[] {
   if (isLikelyNoiseSkill(value)) {
     return [];
   }
+
+  return Array.from(candidates);
+}
+
+function extractProfessionalSkillCandidates(signals: StructuredJobSignals): string[] {
+  const sourceTerms = [
+    ...signals.required_skills,
+    ...signals.preferred_skills,
+    ...signals.minimum_qualification_keywords,
+    ...signals.preferred_qualification_keywords,
+    ...signals.responsibilities,
+  ];
+
+  const candidates = new Set<string>();
+
+  sourceTerms.forEach((term) => {
+    const normalized = normalizeTerm(term);
+    if (!normalized || KNOWN_TECH_TERMS.includes(normalized)) {
+      return;
+    }
+
+    Object.entries(PROFESSIONAL_SKILL_KEYWORDS).forEach(([skill, keywords]) => {
+      if (keywords.some((keyword) => normalized.includes(keyword))) {
+        candidates.add(titleCaseLabel(skill));
+      }
+    });
+  });
 
   return Array.from(candidates);
 }
@@ -763,6 +798,16 @@ export function inferSupportedSkillsToAdd(
     ...signals.preferred_skills,
     ...signals.preferred_qualification_keywords,
   ].flatMap(extractSkillCandidates).forEach(maybeAdd);
+
+  extractProfessionalSkillCandidates(signals).forEach((skill) => {
+    const normalized = normalizeTerm(skill);
+    if (!normalized || existingSkills.has(normalized)) {
+      return;
+    }
+
+    result.professional_skills.push(skill);
+    existingSkills.add(normalized);
+  });
 
   return {
     languages: uniq(result.languages),

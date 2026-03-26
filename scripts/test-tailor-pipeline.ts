@@ -120,7 +120,7 @@ const signals: StructuredJobSignals = {
   minimum_qualification_keywords: ["REST APIs", "Cross-functional collaboration", "Strong programming skills in Python"],
   preferred_qualification_keywords: ["Experimentation", "Experience with containers (Docker)", "Coursework or project experience with LangChain"],
   tools_technologies: ["Next.js", "PostgreSQL", "Docker", "Spark", "Kafka"],
-  responsibilities: ["build user-facing features", "improve onboarding flows"],
+  responsibilities: ["build user-facing features", "improve onboarding flows", "communicate findings to stakeholders"],
   domain_keywords: ["product", "experimentation"],
   years_experience: 2,
   team_focus: "Frontend",
@@ -186,10 +186,18 @@ function run(): void {
     !skillsToAdd.frameworks_libraries.includes("Ph.D. in Computer Science"),
     "education phrases should not be surfaced as frameworks"
   );
+  assert.ok(
+    skillsToAdd.professional_skills.includes("Teamwork"),
+    "behavioral job requirements should be surfaced into a dedicated professional skills category"
+  );
   assert.equal(
-    skillsToAdd.professional_skills.length,
+    skillsToAdd.professional_skills.filter((item) => item === "Communication").length,
     0,
-    "resume-derived professional skills should not be auto-added without matching job signals"
+    "existing professional skills should not be duplicated in skills_to_add"
+  );
+  assert.ok(
+    !skillsToAdd.professional_skills.includes("Problem-solving"),
+    "professional skills should come from job-description signals, not resume-only inference"
   );
   assert.ok(
     missingKeywords.length === 0,

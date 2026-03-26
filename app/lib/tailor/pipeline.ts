@@ -475,77 +475,6 @@ function collectResumeEvidenceTerms(resume: Resume): Set<string> {
   return terms;
 }
 
-function collectProjectTechnologyTerms(resume: Resume, signals: StructuredJobSignals): string[] {
-  const candidates = new Map<string, string>();
-  const register = (term: string): void => {
-    const normalized = normalizeTerm(term);
-    if (!normalized) {
-      return;
-    }
-    if (!candidates.has(normalized)) {
-      candidates.set(normalized, term);
-    }
-  };
-
-  const searchableTerms = uniq([
-    ...KNOWN_TECH_TERMS,
-    ...signals.required_skills,
-    ...signals.tools_technologies,
-    ...signals.preferred_skills,
-    ...resume.skills.languages,
-    ...resume.skills.frameworks_libraries,
-    ...resume.skills.tools,
-  ]);
-
-  resume.projects.forEach((project) => {
-    project.technologies.forEach(register);
-    project.bullets.forEach((bullet) => {
-      phraseMatches(bullet, searchableTerms).forEach(register);
-    });
-  });
-
-  return Array.from(candidates.values());
-}
-
-function inferProfessionalSkills(resume: Resume, signals: StructuredJobSignals): string[] {
-  const text = [
-    resume.summary,
-    ...resume.experience.flatMap((item) => [item.role, ...item.bullets]),
-    ...resume.projects.flatMap((item) => item.bullets),
-  ].join(" \n ");
-
-  const inferred = new Set<string>();
-
-  for (const [skill, patterns] of Object.entries(PROFESSIONAL_SKILL_PATTERNS)) {
-    if (patterns.some((pattern) => pattern.test(text))) {
-      inferred.add(titleCaseLabel(skill));
-    }
-  }
-
-  const jobProfessionalTerms = uniq([
-    ...signals.required_skills,
-    ...signals.preferred_skills,
-    ...signals.minimum_qualification_keywords,
-    ...signals.preferred_qualification_keywords,
-    ...signals.responsibilities,
-  ]).filter((term) => !KNOWN_TECH_TERMS.includes(normalizeTerm(term)));
-
-  jobProfessionalTerms.forEach((term) => {
-    if (tokenOverlapScore(text, [term]) >= 0.5) {
-      inferred.add(titleCaseLabel(term));
-      return;
-    }
-
-    const normalizedTerm = normalizeTerm(term);
-    const mappedPatterns = PROFESSIONAL_SKILL_PATTERNS[normalizedTerm];
-    if (mappedPatterns && mappedPatterns.some((pattern) => pattern.test(text))) {
-      inferred.add(titleCaseLabel(term));
-    }
-  });
-
-  return Array.from(inferred);
-}
-
 function collectSignalTokenSet(signals: StructuredJobSignals): Set<string> {
   return new Set(collectSignalTerms(signals).flatMap((term) => tokenize(term)));
 }
@@ -679,7 +608,6 @@ export function inferSupportedSkillsToAdd(
     existingSkills.add(normalized);
   };
 
-  collectProjectTechnologyTerms(resume, signals).forEach(maybeAdd);
   [
     ...signals.required_skills,
     ...signals.minimum_qualification_keywords,
@@ -687,15 +615,6 @@ export function inferSupportedSkillsToAdd(
     ...signals.preferred_skills,
     ...signals.preferred_qualification_keywords,
   ].forEach(maybeAdd);
-  inferProfessionalSkills(resume, signals).forEach((skill) => {
-    const normalized = normalizeTerm(skill);
-    if (!normalized || existingSkills.has(normalized)) {
-      return;
-    }
-    result.professional_skills.push(skill);
-    existingSkills.add(normalized);
-  });
-
   return {
     languages: uniq(result.languages),
     frameworks_libraries: uniq(result.frameworks_libraries),

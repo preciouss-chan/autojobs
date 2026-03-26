@@ -163,17 +163,21 @@ function run(): void {
   const missingKeywords = findMissingKeywords(resume, signals);
 
   assert.ok(
-    skillsToAdd.frameworks_libraries.includes("Flask"),
-    "project frameworks should be surfaced into the skills section when supported by project technologies"
+    !skillsToAdd.frameworks_libraries.includes("Flask"),
+    "resume-derived project technologies should not be surfaced into skills_to_add"
   );
-  assert.ok(skillsToAdd.tools.includes("OpenAI"), "project technologies should be surfaced into the skills section");
+  assert.ok(
+    !skillsToAdd.tools.includes("OpenAI"),
+    "resume-derived project tools should not be surfaced into skills_to_add"
+  );
   assert.ok(
     skillsToAdd.tools.includes("Docker"),
     "job keywords should be surfaced into the skills section even when they are not yet evidenced elsewhere"
   );
-  assert.ok(
-    skillsToAdd.professional_skills.some((item) => item.toLowerCase() === "teamwork"),
-    "supported soft skills should be surfaced into a dedicated professional skills category"
+  assert.equal(
+    skillsToAdd.professional_skills.length,
+    0,
+    "resume-derived professional skills should not be auto-added without matching job signals"
   );
   assert.ok(
     missingKeywords.length === 0,

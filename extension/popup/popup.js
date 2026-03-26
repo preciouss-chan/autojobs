@@ -30,13 +30,26 @@ function buildJobScraper() {
       return style.display !== "none" && style.visibility !== "hidden" && rect.height > 0 && rect.width > 0;
     };
 
-    const extractText = (element) => element?.innerText?.replace(/\s+/g, " ").trim() || "";
+    const extractText = (element, preserveLines = false) => {
+      const raw = element?.innerText || "";
+      if (!raw) return "";
+      if (preserveLines) {
+        return raw
+          .split(/\n+/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .join("\n");
+      }
+      return raw.replace(/\s+/g, " ").trim();
+    };
 
-    const pickBestText = (selectors, minimumLength = 20, scope = document) => {
-      const candidates = selectors.flatMap((selector) => Array.from(scope.querySelectorAll(selector)));
+    const pickBestText = (selectors, minimumLength = 20, scopes = [document], preserveLines = false) => {
+      const candidates = scopes.flatMap((scope) =>
+        selectors.flatMap((selector) => Array.from(scope.querySelectorAll(selector)))
+      );
       const scored = candidates
         .map((element) => {
-          const text = extractText(element);
+          const text = extractText(element, preserveLines);
           const visible = isVisible(element);
           const containsKeySections = /qualifications|requirements|responsibilities|about the job/i.test(text);
           return {
@@ -51,10 +64,30 @@ function buildJobScraper() {
       return scored[0]?.text || "";
     };
 
+    const extractRelevantSection = (text) => {
+      const lines = text
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      const sectionStart = lines.findIndex((line) =>
+        /about the job|about this job|qualifications|requirements|responsibilities|what you'll do|what you will do|job details/i.test(line)
+      );
+
+      if (sectionStart >= 0) {
+        return lines.slice(sectionStart, sectionStart + 80).join("\n");
+      }
+
+      return lines.slice(0, 80).join("\n");
+    };
+
     const siteContainers = [
       ".jobs-search__job-details--container",
       ".scaffold-layout__detail",
       ".jobs-details",
+      ".jobs-details__main-content",
+      ".jobs-search-two-pane__job-details",
+      ".jobs-search__right-rail",
       ".jobsearch-ViewJobLayout-rightRail",
       "#jobsearch-ViewjobPaneWrapper",
       "main",
@@ -62,7 +95,16 @@ function buildJobScraper() {
       .map((selector) => document.querySelector(selector))
       .filter((element) => element && isVisible(element));
 
-    const scopedRoot = siteContainers[0] || document;
+    const scoredRoots = siteContainers
+      .map((element) => {
+        const text = extractText(element, true);
+        const score = text.length + (/about the job|qualifications|responsibilities|benefits/i.test(text) ? 3000 : 0);
+        return { element, score };
+      })
+      .sort((left, right) => right.score - left.score);
+
+    const scopedRoot = scoredRoots[0]?.element || document;
+    const candidateScopes = [scopedRoot, ...siteContainers.filter((element) => element !== scopedRoot), document];
 
     const jobTitle = pickBestText([
       ".job-details-jobs-unified-top-card__job-title h1",
@@ -71,7 +113,7 @@ function buildJobScraper() {
       ".jobsearch-JobInfoHeader-title",
       "h1[data-testid='job-title']",
       "h1",
-    ], 8, scopedRoot);
+    ], 8, candidateScopes);
 
     const company = pickBestText([
       ".job-details-jobs-unified-top-card__company-name",
@@ -79,20 +121,25 @@ function buildJobScraper() {
       ".topcard__org-name-link",
       ".jobsearch-InlineCompanyRating div:first-child",
       "[data-testid='inlineHeader-companyName']",
-    ], 2, scopedRoot);
+    ], 2, candidateScopes);
 
     const description = pickBestText([
+      ".jobs-search__job-details--container .jobs-box__html-content",
+      ".jobs-search__job-details--container .jobs-description-content__text",
+      ".jobs-search__job-details--container .jobs-description__container",
       ".jobs-description-content__text",
       ".jobs-box__html-content",
       ".jobs-description__container",
       ".jobs-description__content",
+      ".jobs-description__main-section",
+      ".jobs-details__main-content",
       ".description__text",
       ".jobsearch-JobComponent-description",
       ".jobDescriptionContent",
       "[data-testid='jobsearch-JobComponent-description']",
       "#jobDescriptionText",
       "article",
-    ], 120, scopedRoot);
+    ], 120, candidateScopes, true);
 
     const fallbackDescription = description || pickBestText([
       ".jobs-description-content__text",
@@ -103,7 +150,11 @@ function buildJobScraper() {
       ".jobsearch-JobComponent-description",
       ".jobDescriptionContent",
       "[data-testid='jobsearch-JobComponent-description']",
-    ], 120, document);
+    ], 120, [document], true);
+
+    const rootDescription = !fallbackDescription && scopedRoot !== document
+      ? extractRelevantSection(extractText(scopedRoot, true))
+      : "";
 
     const parts = [];
     if (jobTitle) {
@@ -112,8 +163,8 @@ function buildJobScraper() {
     if (company) {
       parts.push(`Company: ${company}`);
     }
-    if (fallbackDescription) {
-      parts.push(fallbackDescription);
+    if (fallbackDescription || rootDescription) {
+      parts.push(fallbackDescription || rootDescription);
     }
 
     const finalText = parts.join("\n\n").trim();
@@ -781,6 +832,11 @@ document.getElementById("generate").addEventListener("click", async () => {
 
   const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
 
+  if (!tab?.id || !tab.url || /^chrome:\/\//.test(tab.url) || /^edge:\/\//.test(tab.url)) {
+    alert("Open a job posting tab first. The extension cannot read chrome:// or browser internal pages.");
+    return;
+  }
+
   const [res] = await browserAPI.scripting.executeScript({
     target: { tabId: tab.id },
     func: buildJobScraper()
@@ -849,6 +905,9 @@ document.getElementById("generate").addEventListener("click", async () => {
       }
       return;
     }
+
+    console.log("🎯 MAKE_RESUME debug skills_to_add:", resp.debug?.skillsToAdd || null);
+    console.log("🔍 MAKE_RESUME debug merged skills:", resp.debug?.mergedSkills || null);
     
     const message = "Resume tailored and saved!";
     

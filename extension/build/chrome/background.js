@@ -62,6 +62,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         console.log("🔑 API key managed by backend, calling tailor API...");
         console.log("🌐 Backend URL:", BASE_URL);
         console.log("📋 Request URL will be:", `${BASE_URL}/api/tailor`);
+        console.log("📄 Job description payload:", msg.jobDescription);
 
         // Call tailor API with resume data (API key is handled by backend)
         const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {

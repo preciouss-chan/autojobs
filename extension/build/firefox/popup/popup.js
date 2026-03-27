@@ -86,6 +86,28 @@ function buildJobScraper() {
       return lines.slice(0, 80).join("\n");
     };
 
+    const extractSectionWindow = (text, startPatterns, stopPatterns) => {
+      const lines = text
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      const startIndex = lines.findIndex((line) => startPatterns.some((pattern) => pattern.test(line)));
+      if (startIndex < 0) {
+        return "";
+      }
+
+      let endIndex = Math.min(lines.length, startIndex + 140);
+      for (let index = startIndex + 1; index < lines.length; index += 1) {
+        if (stopPatterns.some((pattern) => pattern.test(lines[index]))) {
+          endIndex = index;
+          break;
+        }
+      }
+
+      return lines.slice(startIndex, endIndex).join("\n");
+    };
+
     const collectMatches = (selectors) => selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)));
 
     const siteContainers = collectMatches([
@@ -119,6 +141,7 @@ function buildJobScraper() {
 
     const scopedRoot = scoredRoots[0]?.element || document;
     const candidateScopes = [scopedRoot, ...siteContainers.filter((element) => element !== scopedRoot), document];
+    const linkedInPaneText = extractText(scopedRoot, true);
 
     const jobTitle = pickBestText([
       ".job-details-jobs-unified-top-card__job-title h1",
@@ -137,18 +160,21 @@ function buildJobScraper() {
       "[data-testid='inlineHeader-companyName']",
     ], 2, candidateScopes);
 
-    const linkedInAboutJobSection = (() => {
-      const heading = candidateScopes
-        .flatMap((scope) => Array.from(scope.querySelectorAll("h2, h3, span, div")))
-        .find((element) => /^about the job$/i.test(extractText(element)));
-
-      if (!heading) {
-        return "";
-      }
-
-      const section = heading.closest("section, article, div");
-      return extractRelevantSection(extractText(section || heading.parentElement || heading, true));
-    })();
+    const linkedInAboutJobSection = extractSectionWindow(
+      linkedInPaneText,
+      [/^about the job$/i, /^job description$/i],
+      [
+        /^people you can reach out to$/i,
+        /^meet the hiring team$/i,
+        /^how your profile and resume fit this job$/i,
+        /^set alert for similar jobs$/i,
+        /^about the company$/i,
+        /^show all$/i,
+        /^show more$/i,
+        /^more jobs$/i,
+        /^job search faster with premium$/i,
+      ]
+    );
 
     const description = pickBestText([
       ".jobs-search__job-details--container .jobs-box__html-content",

@@ -118,8 +118,15 @@ const signals: StructuredJobSignals = {
   required_skills: ["TypeScript", "React"],
   preferred_skills: ["A/B testing"],
   minimum_qualification_keywords: ["REST APIs", "Cross-functional collaboration", "Strong programming skills in Python"],
-  preferred_qualification_keywords: ["Experimentation", "Experience with containers (Docker)", "Coursework or project experience with LangChain"],
-  tools_technologies: ["Next.js", "PostgreSQL", "Docker", "Spark", "Kafka"],
+  preferred_qualification_keywords: [
+    "Experimentation",
+    "Experience with containers (Docker)",
+    "Coursework or project experience with LangChain",
+    "container management systems such as Kubernetes, Mesos",
+    "AutoML modeling",
+    "ClickHouse",
+  ],
+  tools_technologies: ["Next.js", "PostgreSQL", "Docker", "Spark", "Kafka", "CI/CD"],
   responsibilities: ["build user-facing features", "improve onboarding flows", "communicate findings to stakeholders"],
   domain_keywords: ["product", "experimentation"],
   years_experience: 2,
@@ -173,6 +180,26 @@ function run(): void {
   assert.ok(
     skillsToAdd.tools.includes("Docker"),
     "job keywords should be surfaced into the skills section even when they are not yet evidenced elsewhere"
+  );
+  assert.ok(
+    skillsToAdd.tools.includes("Kubernetes"),
+    "known infrastructure technologies should be extracted from longer qualification phrases"
+  );
+  assert.ok(
+    skillsToAdd.tools.includes("Mesos"),
+    "multiple technologies should be extracted from one qualification phrase"
+  );
+  assert.ok(
+    skillsToAdd.tools.includes("AutoML"),
+    "modeling technologies should be normalized into concise skill labels"
+  );
+  assert.ok(
+    skillsToAdd.tools.includes("ClickHouse"),
+    "unknown but concise LLM-extracted technical keywords should be trusted by default"
+  );
+  assert.ok(
+    skillsToAdd.tools.includes("CI/CD"),
+    "pipeline technologies should be retained as technologies"
   );
   assert.ok(
     skillsToAdd.frameworks_libraries.includes("LangChain"),

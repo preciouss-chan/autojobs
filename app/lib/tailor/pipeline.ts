@@ -98,6 +98,11 @@ const TECH_ALIASES: Record<string, string> = {
   ml: "machine learning",
   llm: "large language models",
   apis: "api",
+  k8s: "kubernetes",
+  automl: "automl",
+  "auto ml": "automl",
+  nosql: "nosql",
+  "ci/cd": "ci/cd",
 };
 
 const KNOWN_TECH_TERMS = uniq([
@@ -131,10 +136,18 @@ const KNOWN_TECH_TERMS = uniq([
   "gpt-3.5",
   "gpt-4",
   "aws",
+  "amazon web services",
   "docker",
+  "kubernetes",
+  "mesos",
   "spark",
   "kafka",
   "flink",
+  "automl",
+  "nosql",
+  "ci/cd",
+  "microservices",
+  "cloud computing",
   "langchain",
   "rag",
   "rag architectures",
@@ -181,10 +194,18 @@ const CANONICAL_SKILL_LABELS: Record<string, string> = {
   "gpt-3.5": "GPT-3.5",
   "gpt-4": "GPT-4",
   aws: "AWS",
+  "amazon web services": "AWS",
   docker: "Docker",
+  kubernetes: "Kubernetes",
+  mesos: "Mesos",
   spark: "Spark",
   kafka: "Kafka",
   flink: "Flink",
+  automl: "AutoML",
+  nosql: "NoSQL",
+  "ci/cd": "CI/CD",
+  microservices: "Microservices",
+  "cloud computing": "Cloud Computing",
   langchain: "LangChain",
   rag: "RAG",
   "rag architectures": "RAG architectures",
@@ -259,7 +280,24 @@ function uniq(values: string[]): string[] {
 
 function canonicalSkillLabel(value: string): string {
   const normalized = normalizeTerm(value);
-  return CANONICAL_SKILL_LABELS[normalized] || titleCaseLabel(value);
+  if (CANONICAL_SKILL_LABELS[normalized]) {
+    return CANONICAL_SKILL_LABELS[normalized];
+  }
+
+  const cleaned = normalizeWhitespace(value)
+    .replace(/^[^A-Za-z0-9]+/, "")
+    .replace(/[^A-Za-z0-9+#./\-\s]+$/, "")
+    .trim();
+
+  if (!cleaned) {
+    return titleCaseLabel(value);
+  }
+
+  if (/[A-Z]{2,}|[a-z][A-Z]|[+#./-]/.test(cleaned)) {
+    return cleaned;
+  }
+
+  return titleCaseLabel(cleaned);
 }
 
 function isLikelyNoiseSkill(value: string): boolean {
@@ -315,7 +353,19 @@ function extractSkillCandidates(value: string): string[] {
     return [];
   }
 
-  return Array.from(candidates);
+  const technicalSignalPattern = /\b(api|database|databases|backend|frontend|cloud|pipeline|pipelines|microservices|container|containers|kubernetes|mesos|automl|llm|llms|rag|modeling|models|machine learning|data engineering|distributed systems|security|analytics|sql|nosql)\b/i;
+
+  if (technicalSignalPattern.test(value)) {
+    return [canonicalSkillLabel(value)];
+  }
+
+  const cleaned = canonicalSkillLabel(value);
+  const tokenCount = tokenize(cleaned).length;
+  if (tokenCount > 0 && tokenCount <= 4) {
+    return [cleaned];
+  }
+
+  return [];
 }
 
 function extractProfessionalSkillCandidates(signals: StructuredJobSignals): string[] {
@@ -782,11 +832,11 @@ export function inferSupportedSkillsToAdd(
     }
 
     if (languageTerms.has(normalized)) {
-      result.languages.push(canonicalSkillLabel(normalized));
+      result.languages.push(canonicalSkillLabel(skill));
     } else if (frameworkTerms.has(normalized)) {
-      result.frameworks_libraries.push(canonicalSkillLabel(normalized));
+      result.frameworks_libraries.push(canonicalSkillLabel(skill));
     } else {
-      result.tools.push(canonicalSkillLabel(normalized));
+      result.tools.push(canonicalSkillLabel(skill));
     }
     existingSkills.add(normalized);
   };

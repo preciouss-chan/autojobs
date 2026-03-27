@@ -81,24 +81,33 @@ function buildJobScraper() {
       return lines.slice(0, 80).join("\n");
     };
 
-    const siteContainers = [
+    const collectMatches = (selectors) => selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)));
+
+    const siteContainers = collectMatches([
       ".jobs-search__job-details--container",
       ".scaffold-layout__detail",
       ".jobs-details",
       ".jobs-details__main-content",
       ".jobs-search-two-pane__job-details",
       ".jobs-search__right-rail",
+      ".jobs-search-two-pane__wrapper",
+      ".jobs-search-two-pane__details",
+      ".jobs-search-two-pane__job-details-container",
+      ".jobs-details-top-card",
       ".jobsearch-ViewJobLayout-rightRail",
       "#jobsearch-ViewjobPaneWrapper",
       "main",
-    ]
-      .map((selector) => document.querySelector(selector))
+    ])
       .filter((element) => element && isVisible(element));
 
     const scoredRoots = siteContainers
       .map((element) => {
         const text = extractText(element, true);
-        const score = text.length + (/about the job|qualifications|responsibilities|benefits/i.test(text) ? 3000 : 0);
+        const score = text.length
+          + (/about the job|qualifications|responsibilities|benefits/i.test(text) ? 3000 : 0)
+          + (element.querySelector(".job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, h1") ? 1500 : 0)
+          + (element.querySelector(".jobs-box__html-content, .jobs-description-content__text, .jobs-description__container") ? 2500 : 0)
+          - (element.tagName === "MAIN" ? 2500 : 0);
         return { element, score };
       })
       .sort((left, right) => right.score - left.score);
@@ -123,10 +132,29 @@ function buildJobScraper() {
       "[data-testid='inlineHeader-companyName']",
     ], 2, candidateScopes);
 
+    const linkedInAboutJobSection = (() => {
+      const heading = candidateScopes
+        .flatMap((scope) => Array.from(scope.querySelectorAll("h2, h3, span, div")))
+        .find((element) => /^about the job$/i.test(extractText(element)));
+
+      if (!heading) {
+        return "";
+      }
+
+      const section = heading.closest("section, article, div");
+      return extractRelevantSection(extractText(section || heading.parentElement || heading, true));
+    })();
+
     const description = pickBestText([
       ".jobs-search__job-details--container .jobs-box__html-content",
       ".jobs-search__job-details--container .jobs-description-content__text",
       ".jobs-search__job-details--container .jobs-description__container",
+      ".jobs-search-two-pane__job-details .jobs-box__html-content",
+      ".jobs-search-two-pane__job-details .jobs-description-content__text",
+      ".jobs-search-two-pane__job-details .jobs-description__container",
+      ".jobs-search-two-pane__details .jobs-box__html-content",
+      ".jobs-search-two-pane__details .jobs-description-content__text",
+      ".jobs-search-two-pane__details .jobs-description__container",
       ".jobs-description-content__text",
       ".jobs-box__html-content",
       ".jobs-description__container",
@@ -141,7 +169,7 @@ function buildJobScraper() {
       "article",
     ], 120, candidateScopes, true);
 
-    const fallbackDescription = description || pickBestText([
+    const fallbackDescription = description || linkedInAboutJobSection || pickBestText([
       ".jobs-description-content__text",
       ".jobs-box__html-content",
       ".jobs-description__container",

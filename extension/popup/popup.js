@@ -195,7 +195,9 @@ function buildJobScraper() {
       "article",
     ], 120, candidateScopes, true);
 
-    const fallbackDescription = description || linkedInAboutJobSection || pickBestText([
+    const preferredDescription = linkedInAboutJobSection || description;
+
+    const fallbackDescription = preferredDescription || pickBestText([
       ".jobs-description-content__text",
       ".jobs-box__html-content",
       ".jobs-description__container",

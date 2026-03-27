@@ -231,6 +231,26 @@ const SKILL_NOISE_PATTERNS = [
   /\bai frameworks\b|\bcutting-edge\b|\bexceptional\b|\bupper division\b/i,
 ];
 
+const GENERIC_TECH_UMBRELLA_PATTERNS = [
+  /\bcloud platforms?\b/i,
+  /\bai frameworks?\b/i,
+  /\bai models?\b/i,
+  /\bcontainer technologies?\b/i,
+  /\bcontainer management systems?\b/i,
+  /\bfunctional ai models?\b/i,
+];
+
+const QUALIFIER_LED_PATTERNS = [
+  /^exposure to\b/i,
+  /^experience with\b/i,
+  /^experienced with\b/i,
+  /^familiar(?:ity)? with\b/i,
+  /^knowledge of\b/i,
+  /^proficien(?:cy|t) in\b/i,
+  /^skilled in\b/i,
+  /^interest in\b/i,
+];
+
 const PROFESSIONAL_SKILL_KEYWORDS: Record<string, string[]> = {
   communication: ["communication", "communicate", "present", "presentation", "stakeholder"],
   teamwork: ["teamwork", "team player", "collaboration", "collaborate", "cross-functional"],
@@ -352,6 +372,14 @@ function extractSkillCandidates(value: string): string[] {
   }
 
   if (isLikelyNoiseSkill(value)) {
+    return [];
+  }
+
+  if (GENERIC_TECH_UMBRELLA_PATTERNS.some((pattern) => pattern.test(value))) {
+    return [];
+  }
+
+  if (QUALIFIER_LED_PATTERNS.some((pattern) => pattern.test(value))) {
     return [];
   }
 

@@ -129,6 +129,7 @@ const signals: StructuredJobSignals = {
     "Cutting-edge research",
     "Exceptional Upper Division Undergraduate",
     "AI frameworks",
+    "Exposure to cloud platforms",
   ],
   tools_technologies: ["Next.js", "PostgreSQL", "Docker", "Spark", "Kafka", "CI/CD"],
   responsibilities: ["build user-facing features", "improve onboarding flows", "communicate findings to stakeholders"],
@@ -228,6 +229,10 @@ function run(): void {
   assert.ok(
     !skillsToAdd.tools.includes("AI frameworks"),
     "generic umbrella phrases should not be surfaced as technologies"
+  );
+  assert.ok(
+    !skillsToAdd.tools.includes("Exposure to cloud platforms"),
+    "qualifier-led generic platform phrases should not be surfaced as technologies"
   );
   assert.ok(
     !skillsToAdd.frameworks_libraries.includes("Ph.D. in Computer Science"),

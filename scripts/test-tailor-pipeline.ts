@@ -125,6 +125,10 @@ const signals: StructuredJobSignals = {
     "container management systems such as Kubernetes, Mesos",
     "AutoML modeling",
     "ClickHouse",
+    "Computer Science",
+    "Cutting-edge research",
+    "Exceptional Upper Division Undergraduate",
+    "AI frameworks",
   ],
   tools_technologies: ["Next.js", "PostgreSQL", "Docker", "Spark", "Kafka", "CI/CD"],
   responsibilities: ["build user-facing features", "improve onboarding flows", "communicate findings to stakeholders"],
@@ -208,6 +212,22 @@ function run(): void {
   assert.ok(
     !skillsToAdd.tools.includes("Strong programming skills in Python"),
     "instructional phrases should not be surfaced as tools"
+  );
+  assert.ok(
+    !skillsToAdd.tools.includes("Computer Science"),
+    "degree-domain phrases should not be surfaced as technologies"
+  );
+  assert.ok(
+    !skillsToAdd.tools.includes("Cutting-edge research"),
+    "generic research phrases should not be surfaced as technologies"
+  );
+  assert.ok(
+    !skillsToAdd.tools.includes("Exceptional Upper Division Undergraduate"),
+    "education descriptors should not be surfaced as technologies"
+  );
+  assert.ok(
+    !skillsToAdd.tools.includes("AI frameworks"),
+    "generic umbrella phrases should not be surfaced as technologies"
   );
   assert.ok(
     !skillsToAdd.frameworks_libraries.includes("Ph.D. in Computer Science"),

@@ -227,6 +227,8 @@ const SKILL_NOISE_PATTERNS = [
   /\b(currently|recently|soon|passionate|comfortable|eager|interest|understanding|learning|learn|graduate|graduated|completing|mentorship|coursework|academic|project experience|real-world|at scale|related field|nice-to-have|plus|preferred)\b/i,
   /\bph\.?d\b|\bms\b|\bmaster'?s\b|\bbachelor'?s\b|\bdegree\b/i,
   /\bwhat you'?ll do\b|\brequirements\b|\bbenefits\b|\brole summary\b/i,
+  /\bcomputer science\b|\belectrical engineering\b|\bundergraduate\b|\bresearch\b/i,
+  /\bai frameworks\b|\bcutting-edge\b|\bexceptional\b|\bupper division\b/i,
 ];
 
 const PROFESSIONAL_SKILL_KEYWORDS: Record<string, string[]> = {
@@ -361,7 +363,10 @@ function extractSkillCandidates(value: string): string[] {
 
   const cleaned = canonicalSkillLabel(value);
   const tokenCount = tokenize(cleaned).length;
-  if (tokenCount > 0 && tokenCount <= 4) {
+  const looksLikeStandaloneTech = tokenCount === 1
+    && (/[A-Z]{2,}|[a-z][A-Z]|[0-9+#./-]/.test(cleaned) || cleaned.length <= 15);
+
+  if (looksLikeStandaloneTech) {
     return [cleaned];
   }
 

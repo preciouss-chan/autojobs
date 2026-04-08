@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 
 /**
  * This endpoint is called by the extension to notify the dashboard
  * to log out. It returns a special response that tells the browser
  * to clear the session cookie.
  */
-export async function POST(req: NextRequest): Promise<NextResponse> {
+export async function POST(): Promise<NextResponse> {
   try {
     // Sign out by clearing the session cookie
     const response = NextResponse.json(
@@ -14,21 +13,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 200 }
     );
 
-    // Clear the NextAuth session cookie
     response.cookies.set("next-auth.session-token", "", {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
-      maxAge: 0, // Expire immediately
+      maxAge: 0,
+    });
+    response.cookies.set("__Secure-next-auth.session-token", "", {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      secure: true,
+      maxAge: 0,
     });
 
     console.log("✅ Extension logout request received, session cleared");
 
     return response;
-  } catch (err: any) {
-    console.error("Extension logout error:", err.message);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Extension logout error:", message);
     return NextResponse.json(
-      { error: "Logout failed", details: err.message },
+      { error: "Logout failed", details: message },
       { status: 500 }
     );
   }

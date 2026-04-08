@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 
-export async function POST(req: NextRequest): Promise<NextResponse> {
+export async function POST(): Promise<NextResponse> {
   try {
     const session = await auth();
 
@@ -19,19 +18,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 200 }
     );
 
-    // Clear the NextAuth session cookie
     response.cookies.set("next-auth.session-token", "", {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
-      maxAge: 0, // Expire immediately
+      maxAge: 0,
+    });
+    response.cookies.set("__Secure-next-auth.session-token", "", {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      secure: true,
+      maxAge: 0,
     });
 
     return response;
-  } catch (err: any) {
-    console.error("Logout error:", err.message);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Logout error:", message);
     return NextResponse.json(
-      { error: "Logout failed", details: err.message },
+      { error: "Logout failed", details: message },
       { status: 500 }
     );
   }

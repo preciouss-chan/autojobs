@@ -35,7 +35,6 @@ export default function ResumePreview({ resume }: ResumePreviewProps): React.Rea
           {resume.contact.github && <span>{resume.contact.github}</span>}
         </div>
 
-        <hr className="border-gray-800 border-t-2" />
       </header>
 
       {/* Summary */}

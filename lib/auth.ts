@@ -1,14 +1,24 @@
 import type { JWT } from "next-auth/jwt";
 import type { Session } from "next-auth";
 import type { AuthOptions } from "next-auth";
-import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { getServerSession } from "next-auth/next";
 import { prisma } from "./prisma";
 
-if (!process.env.AUTH_SECRET) {
-  console.warn("⚠️ AUTH_SECRET not set. This will cause issues in production. Please set AUTH_SECRET environment variable.");
+interface AuthUser {
+  readonly id?: string;
+  readonly email?: string | null;
+}
+
+type SessionUserWithId = Session["user"] & {
+  id?: string;
+};
+
+const authSecret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
+
+if (!authSecret) {
+  console.warn("⚠️ NEXTAUTH_SECRET or AUTH_SECRET must be set. Missing auth secret will cause production login issues.");
 }
 
 if (!process.env.AUTH_GOOGLE_ID || !process.env.AUTH_GOOGLE_SECRET) {
@@ -21,6 +31,7 @@ if (!prisma) {
 
 export const authOptions: AuthOptions = {
   adapter: PrismaAdapter(prisma),
+  secret: authSecret,
   providers: [
     GoogleProvider({
       clientId: process.env.AUTH_GOOGLE_ID || "",
@@ -32,10 +43,10 @@ export const authOptions: AuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   jwt: {
-    secret: process.env.AUTH_SECRET || "",
+    secret: authSecret,
   },
   callbacks: {
-    async jwt({ token, user }: { token: JWT; user?: any }): Promise<JWT> {
+    async jwt({ token, user }: { token: JWT; user?: AuthUser }): Promise<JWT> {
       if (user) {
         token.id = user.id;
         token.email = user.email;
@@ -50,7 +61,8 @@ export const authOptions: AuthOptions = {
       token: JWT;
     }): Promise<Session> {
       if (session.user && token) {
-        (session.user as any).id = token.id as string;
+        const sessionUser = session.user as SessionUserWithId;
+        sessionUser.id = typeof token.id === "string" ? token.id : undefined;
       }
       return session;
     },
@@ -62,45 +74,8 @@ export const authOptions: AuthOptions = {
     // signIn: "/auth/signin",
     error: "/auth/error",
   },
-  cookies: {
-    sessionToken: {
-      name: "next-auth.session-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production", // HTTPS only in production
-      },
-    },
-    callbackUrl: {
-      name: "next-auth.callback-url",
-      options: {
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-      },
-    },
-    csrfToken: {
-      name: "next-auth.csrf-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-      },
-    },
-    pkceCodeVerifier: {
-      name: "next-auth.pkce.code_verifier",
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-      },
-    },
-  },
   events: {
-    async signIn({ user }: { user: any }): Promise<void> {
+    async signIn({ user }: { user: AuthUser }): Promise<void> {
       // Create initial credits for new users (1 free app)
       if (user && user.id && user.email) {
         const userId = user.id;
@@ -137,4 +112,3 @@ export const authOptions: AuthOptions = {
 export async function auth(): Promise<Session | null> {
   return await getServerSession(authOptions);
 }
-

@@ -1,366 +1,211 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+import { AppShell, PageHeader, SurfaceHeading, SurfacePanel } from "@/app/components/AppShell";
 
 export const dynamic = "force-dynamic";
 
-function DashboardContent() {
-  const { data: session, status } = useSession();
-  const searchParams = useSearchParams();
-  const [credits, setCredits] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [purchasing, setPurchasing] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<"success" | "cancelled" | null>(null);
-  const [paymentMessage, setPaymentMessage] = useState("");
+const OPENAI_API_KEY_STORAGE_KEY = "openaiApiKey";
 
-  /**
-   * Sync extension authentication token with dashboard
-   * This broadcasts the token to any extension windows listening
-   */
-  const syncExtensionToken = useCallback(async () => {
-    try {
-      const response = await fetch("/api/extension/token");
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Method 1: Try to send via extension runtime (most reliable)
-        try {
-          const chromeAPI = (window as any).chrome;
-          if (chromeAPI && chromeAPI.runtime) {
-            chromeAPI.runtime.sendMessage(
-              {
-                action: "SYNC_TOKEN_FROM_DASHBOARD",
-                token: data.token,
-                email: data.email,
-              },
-              (response: any) => {
-                if (chromeAPI.runtime.lastError) {
-                  console.log(
-                    "ℹ️  Extension not installed or not listening"
-                  );
-                } else {
-                  console.log("✅ Token sent to extension via runtime");
-                }
-              }
-            );
-          }
-        } catch (err) {
-          console.log("ℹ️  Could not send via chrome.runtime");
-        }
-
-        // Method 2: Broadcast via postMessage (fallback)
-        if (window.opener) {
-          window.opener.postMessage(
-            {
-              type: "EXTENSION_TOKEN_SYNC",
-              token: data.token,
-              email: data.email,
-              name: data.name,
-            },
-            "*"
-          );
-        }
-        window.postMessage(
-          {
-            type: "EXTENSION_TOKEN_SYNC",
-            token: data.token,
-            email: data.email,
-            name: data.name,
-          },
-          "*"
-        );
-        
-        console.log("✅ Extension token synced with dashboard");
-      }
-    } catch (error) {
-      console.error("Failed to sync extension token:", error);
-    }
-  }, []);
-
-  // Check for payment status from URL
-  useEffect(() => {
-    const status = searchParams.get("payment");
-    if (status === "success") {
-      setPaymentStatus("success");
-      setPaymentMessage("Payment successful! Your credits have been added.");
-      // Refresh credits after successful payment
-      setTimeout(() => {
-        fetchCredits();
-      }, 1000);
-      // Clear the URL parameter after 5 seconds
-      setTimeout(() => {
-        setPaymentStatus(null);
-        setPaymentMessage("");
-      }, 5000);
-    } else if (status === "cancelled") {
-      setPaymentStatus("cancelled");
-      setPaymentMessage("Payment was cancelled. No charges were made.");
-      setTimeout(() => {
-        setPaymentStatus(null);
-        setPaymentMessage("");
-      }, 5000);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (status === "authenticated") {
-      fetchCredits();
-      // Sync extension token after login
-      syncExtensionToken();
-    } else if (status === "unauthenticated") {
-      setLoading(false);
-    }
-  }, [status, syncExtensionToken]);
-
-  // Listen for messages from extension
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.action === "EXTENSION_LOGOUT_REQUEST") {
-        console.log("📩 Extension requested logout from dashboard (via postMessage)");
-        signOut({ redirect: true, callbackUrl: "/auth/signin" });
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-
-    // Also try to listen via chrome.runtime (if available)
-    try {
-      const chromeAPI = (window as any).chrome;
-      if (chromeAPI && chromeAPI.runtime && chromeAPI.runtime.onMessage) {
-        const runtimeListener = (msg: any, sender: any, sendResponse: any) => {
-          if (msg.action === "EXTENSION_LOGOUT_REQUEST") {
-            console.log("📩 Extension requested logout from dashboard (via runtime)");
-            signOut({ redirect: true, callbackUrl: "/auth/signin" });
-            sendResponse({ success: true });
-          }
-        };
-        chromeAPI.runtime.onMessage.addListener(runtimeListener);
-        return () => {
-          window.removeEventListener("message", handleMessage);
-          chromeAPI.runtime.onMessage.removeListener(runtimeListener);
-        };
-      }
-    } catch (err) {
-      console.log("ℹ️  Chrome runtime API not available");
-    }
-
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
-
-  const fetchCredits = async () => {
-    try {
-      const res = await fetch("/api/credits/balance");
-      if (res.ok) {
-        const data = await res.json();
-        setCredits(data.balance);
-      }
-      setLoading(false);
-    } catch (error) {
-      console.error("Error fetching credits:", error);
-      setLoading(false);
-    }
-  };
-
-  const handleBuyCredits = async () => {
-    setPurchasing(true);
-    try {
-      const res = await fetch("/api/payments/create-session", {
-        method: "POST",
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.checkoutUrl) {
-          window.location.href = data.checkoutUrl;
-        } else {
-          alert("Error: No checkout URL received from server");
-        }
-      } else {
-        const error = await res.json();
-        alert(`Failed to create checkout session: ${error.error || "Unknown error"}`);
-      }
-    } catch (error) {
-      console.error("Error creating session:", error);
-      alert("Error creating checkout session. Check console for details.");
-    } finally {
-      setPurchasing(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      // Notify extension to also log out
-      const chromeAPI = (window as any).chrome;
-      if (chromeAPI && chromeAPI.runtime) {
-        // Use a promise wrapper to ensure message is sent
-        await new Promise<void>((resolve) => {
-          chromeAPI.runtime.sendMessage(
-            {
-              action: "LOGOUT_FROM_DASHBOARD",
-            },
-            (response: any) => {
-              if (chromeAPI.runtime.lastError) {
-                console.log("ℹ️  Extension not listening for logout message");
-              } else {
-                console.log("✅ Extension notified of logout");
-              }
-              resolve();
-            }
-          );
-          // Fallback timeout in case extension doesn't respond
-          setTimeout(() => resolve(), 500);
-        });
-      }
-    } catch (err) {
-      console.log("ℹ️  Could not notify extension");
-    }
-
-    // Sign out from dashboard
-    await signOut({ redirect: true, callbackUrl: "/auth/signin" });
-  };
-
-  if (status === "loading" || loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-300 border-t-gray-600 mx-auto mb-4"></div>
-          <p className="text-gray-500 text-sm">Loading...</p>
-        </div>
-      </div>
-    );
+function maskApiKey(value: string): string {
+  if (value.length <= 8) {
+    return "Saved";
   }
 
-  if (status === "unauthenticated") {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-           <div className="bg-white p-8 rounded-lg border border-gray-200 max-w-md w-full shadow-sm">
-          <h1 className="text-xl font-semibold mb-6 text-center text-cyan-600">AutoJobs Dashboard</h1>
-          <p className="text-gray-600 text-sm mb-6 text-center">
-            Sign in to manage your credits and purchase application packs
-          </p>
-          <button
-            onClick={() => signIn("google")}
-            className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition"
-          >
-            Sign in with Google
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b-2 border-cyan-600">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
-          <h1 className="text-lg font-semibold text-cyan-600">AutoJobs</h1>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-gray-600 hover:text-red-600 transition"
-          >
-            Sign out
-          </button>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-         {/* Payment Status Alert */}
-         {paymentStatus && (
-           <div
-             className={`mb-6 p-4 rounded-lg text-sm ${
-               paymentStatus === "success"
-                 ? "bg-green-50 border border-green-200 text-green-700"
-                 : "bg-yellow-50 border border-yellow-200 text-yellow-700"
-             }`}
-           >
-             <p
-               className={`text-sm font-medium ${
-                 paymentStatus === "success"
-                   ? "text-green-700"
-                   : "text-yellow-700"
-               }`}
-             >
-              {paymentMessage}
-            </p>
-          </div>
-        )}
-
-         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-           {/* Credits Card */}
-           <div className="bg-white rounded-lg border-l-4 border-l-cyan-600 border border-gray-200 p-6 shadow-sm">
-             <h2 className="text-lg font-semibold mb-4 text-cyan-600">Your Credits</h2>
-             <div className="mb-6">
-               <p className="text-gray-500 text-sm mb-2">Available Applications:</p>
-               <p className="text-4xl font-bold text-cyan-600">{credits}</p>
-               <p className="text-gray-500 text-xs mt-2">1 credit = 1 job application</p>
-             </div>
-             <button
-               onClick={handleBuyCredits}
-               disabled={purchasing}
-               className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg text-sm transition"
-             >
-               {purchasing ? "Processing..." : "Buy 100 Credits for $2.49"}
-             </button>
-             <p className="text-xs text-gray-500 mt-3">
-               Uses Stripe test mode. Card: 4242 4242 4242 4242
-             </p>
-           </div>
-
-           {/* Account Info */}
-           <div className="bg-white rounded-lg border-l-4 border-l-blue-500 border border-gray-200 p-6 shadow-sm">
-             <h2 className="text-lg font-semibold mb-4 text-blue-600">Account Information</h2>
-             <div className="space-y-4">
-               <div>
-                 <p className="text-gray-500 text-xs uppercase tracking-wide">Email</p>
-                 <p className="text-gray-800 text-sm">{session?.user?.email}</p>
-               </div>
-               <div>
-                 <p className="text-gray-500 text-xs uppercase tracking-wide">Name</p>
-                 <p className="text-gray-800 text-sm">{session?.user?.name || "N/A"}</p>
-               </div>
-             </div>
-             <Link
-               href="/billing"
-               className="block mt-6 text-center bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold text-sm py-2 px-4 rounded-lg transition"
-             >
-              View Billing History
-            </Link>
-          </div>
-        </div>
-
-         {/* Info Section */}
-         <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-l-cyan-600 border border-cyan-200 rounded-lg p-6 mt-8">
-           <h3 className="text-base font-semibold text-cyan-800 mb-3">How AutoJobs Works</h3>
-            <ul className="space-y-2 text-gray-700 text-sm">
-              <li>• Each application uses 1 credit</li>
-              <li>• Your resume is automatically tailored for each job</li>
-              <li>• A cover letter can be generated if needed</li>
-              <li>• Credits expire 1 year after purchase</li>
-              <li>• Your free starter credit never expires</li>
-            </ul>
-          </div>
-       </main>
-     </div>
-   );
+  return `${value.slice(0, 4)}••••${value.slice(-4)}`;
 }
 
-export default function Dashboard() {
+export default function DashboardPage(): React.ReactElement {
+  const [apiKey, setApiKey] = useState<string>("");
+  const [saveMessage, setSaveMessage] = useState<string>("");
+  const [isLoaded, setIsLoaded] = useState<boolean>(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const storedKey = window.sessionStorage.getItem(OPENAI_API_KEY_STORAGE_KEY) || "";
+      setApiKey(storedKey);
+      setIsLoaded(true);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  const hasSavedKey = useMemo(() => apiKey.trim().length > 0, [apiKey]);
+  const saveToneClassName = saveMessage.includes("Saved")
+    ? "status-note status-note-success"
+    : "status-note";
+
+  function handleSave(): void {
+    const trimmedKey = apiKey.trim();
+
+    if (!trimmedKey) {
+      window.sessionStorage.removeItem(OPENAI_API_KEY_STORAGE_KEY);
+      setApiKey("");
+      setSaveMessage("Removed the saved API key from this browser session.");
+      return;
+    }
+
+    window.sessionStorage.setItem(OPENAI_API_KEY_STORAGE_KEY, trimmedKey);
+    setApiKey(trimmedKey);
+    setSaveMessage("Saved your API key for this browser session.");
+  }
+
+  function handleClear(): void {
+    window.sessionStorage.removeItem(OPENAI_API_KEY_STORAGE_KEY);
+    setApiKey("");
+    setSaveMessage("Removed the saved API key from this browser session.");
+  }
+
+  if (!isLoaded) {
+    return (
+      <AppShell>
+        <PageHeader
+          eyebrow="AutoJobs · Step 1 of 2"
+          title="Set your session key first."
+          description="This local-first setup keeps your OpenAI key in the current browser session so you can move into tailoring without extra account steps."
+        />
+        <SurfacePanel className="mt-6 flex min-h-52 items-center justify-center">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-[color:var(--line-strong)] border-t-[color:var(--foreground)]"></div>
+            <p className="section-copy">Loading your dashboard…</p>
+          </div>
+        </SurfacePanel>
+      </AppShell>
+    );
+  }
+
   return (
-    <Suspense
-      fallback={
-         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-           <div className="text-center">
-             <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-300 border-t-gray-600 mx-auto mb-4"></div>
-             <p className="text-gray-500 text-sm">Loading...</p>
-           </div>
-         </div>
-      }
-    >
-      <DashboardContent />
-    </Suspense>
+    <AppShell>
+      <PageHeader
+        eyebrow="AutoJobs · Step 1 of 2"
+        title="Save your session key, then head straight into tailoring."
+        description="For students and new grads, the quickest path starts here: add your OpenAI key once for this browser session, then move into the workspace to paste a role, extract signals, and tailor your resume."
+        actions={[
+          { href: "/", label: "Open workspace", tone: "secondary" },
+        ]}
+        meta={
+          <>
+            <span className="chip">Local-first</span>
+            <span className="chip">Session only</span>
+            <span className="chip">
+              {hasSavedKey ? `Ready · ${maskApiKey(apiKey.trim())}` : "Setup needed"}
+            </span>
+          </>
+        }
+      />
+
+      <main className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.9fr)]">
+        <SurfacePanel className="space-y-6">
+          <SurfaceHeading
+            title="OpenAI API key"
+            description="Your key stays in sessionStorage for this browser session only. The workspace uses it through the app's server routes whenever you parse, extract requirements, or tailor a resume."
+            aside={
+              <span className="chip">
+                {hasSavedKey ? `Saved · ${maskApiKey(apiKey.trim())}` : "Not saved yet"}
+              </span>
+            }
+          />
+
+          <div className="space-y-3">
+            <label htmlFor="openai-api-key" className="field-label">
+              Session API key
+            </label>
+            <input
+              id="openai-api-key"
+              type="password"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder="sk-..."
+              className="field-input"
+            />
+            <p className="section-copy">
+              Paste the key you want this browser session to use. Clear it any time if you want to swap keys or reset the local setup.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="action-primary"
+            >
+              Save for this session
+            </button>
+            <button
+              type="button"
+              onClick={handleClear}
+              className="action-secondary"
+            >
+              Clear key
+            </button>
+            <Link href="/" className="action-subtle">
+              Continue to workspace
+            </Link>
+          </div>
+
+          {saveMessage ? (
+            <p className={saveToneClassName}>{saveMessage}</p>
+          ) : (
+            <p className="status-note">
+              Tip: once this is saved, the main workspace will immediately pick it up from the same browser session.
+            </p>
+          )}
+        </SurfacePanel>
+
+        <div className="space-y-6">
+          <SurfacePanel muted className="space-y-5">
+            <SurfaceHeading
+              title="How the flow works"
+              description="Keep setup light, then move into the actual resume work."
+            />
+
+            <ol className="space-y-4 text-sm text-[color:var(--foreground-soft)]">
+              <li className="flex gap-3">
+                <span className="chip h-fit">1</span>
+                <div>
+                  <p className="font-medium text-[color:var(--foreground)]">Save your key here</p>
+                  <p className="mt-1 leading-6">
+                    It stays in this browser session only, so you can work locally without extra account or billing steps.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="chip h-fit">2</span>
+                <div>
+                  <p className="font-medium text-[color:var(--foreground)]">Paste a job description in the workspace</p>
+                  <p className="mt-1 leading-6">
+                    Extract the role signals first if you want a quick structure check before tailoring.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="chip h-fit">3</span>
+                <div>
+                  <p className="font-medium text-[color:var(--foreground)]">Tailor and export</p>
+                  <p className="mt-1 leading-6">
+                    Review bullet rewrites, ATS feedback, and the merged resume preview before downloading a PDF.
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </SurfacePanel>
+
+          <SurfacePanel className="space-y-4">
+            <SurfaceHeading
+              title="Local-first notes"
+              description="The main web flow now stays practical and focused."
+            />
+
+            <ul className="space-y-3 text-sm leading-6 text-[color:var(--foreground-soft)]">
+              <li>Billing, credits, and hosted sign-in are no longer part of this flow.</li>
+              <li>The dashboard and workspace share the same browser-session API key.</li>
+              <li>The fastest path is now setup here, then tailoring in the main workspace.</li>
+            </ul>
+          </SurfacePanel>
+        </div>
+      </main>
+    </AppShell>
   );
 }

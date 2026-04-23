@@ -16,28 +16,32 @@ type SessionUserWithId = Session["user"] & {
 };
 
 const authSecret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
+export const authEnabled = Boolean(
+  authSecret &&
+    process.env.AUTH_GOOGLE_ID &&
+    process.env.AUTH_GOOGLE_SECRET &&
+    prisma
+);
 
 if (!authSecret) {
   console.warn("⚠️ NEXTAUTH_SECRET or AUTH_SECRET must be set. Missing auth secret will cause production login issues.");
 }
 
-if (!process.env.AUTH_GOOGLE_ID || !process.env.AUTH_GOOGLE_SECRET) {
-  throw new Error("Missing Google OAuth credentials!");
-}
-
-if (!prisma) {
-  throw new Error("Prisma client not initialized!");
+if (!authEnabled) {
+  console.warn("⚠️ Auth is disabled. The app will run in open-source BYO-key mode.");
 }
 
 export const authOptions: AuthOptions = {
-  adapter: PrismaAdapter(prisma),
-  secret: authSecret,
-  providers: [
-    GoogleProvider({
-      clientId: process.env.AUTH_GOOGLE_ID || "",
-      clientSecret: process.env.AUTH_GOOGLE_SECRET || "",
-    }),
-  ],
+  ...(authEnabled && prisma ? { adapter: PrismaAdapter(prisma) } : {}),
+  secret: authSecret || "opensource-mode-auth-disabled",
+  providers: authEnabled
+    ? [
+        GoogleProvider({
+          clientId: process.env.AUTH_GOOGLE_ID || "",
+          clientSecret: process.env.AUTH_GOOGLE_SECRET || "",
+        }),
+      ]
+    : [],
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -74,7 +78,7 @@ export const authOptions: AuthOptions = {
     // signIn: "/auth/signin",
     error: "/auth/error",
   },
-  events: {
+  events: authEnabled && prisma ? {
     async signIn({ user }: { user: AuthUser }): Promise<void> {
       // Create initial credits for new users (1 free app)
       if (user && user.id && user.email) {
@@ -105,10 +109,14 @@ export const authOptions: AuthOptions = {
         }
       }
     },
-  },
+  } : {},
 };
 
 // Wrapper function for NextAuth v4
 export async function auth(): Promise<Session | null> {
+  if (!authEnabled) {
+    return null;
+  }
+
   return await getServerSession(authOptions);
 }

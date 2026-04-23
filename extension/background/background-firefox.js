@@ -12,25 +12,19 @@ const BASE_URL = BACKEND_URL;
 
 // Storage keys
 const STORAGE_KEYS = {
-  AUTH_TOKEN: "auth_token",
-  USER_EMAIL: "user_email"
+  OPENAI_API_KEY: "openaiApiKey"
 };
-
-// Note: API key is now managed by the backend server
-// The server uses the OPENAI_API_KEY environment variable
-// Extension no longer needs to handle API keys
 
 console.log("🔥 Background script loaded (Firefox).");
 
-// Helper to get auth token from storage
-function getAuthToken() {
+function getStoredApiKey() {
   return new Promise((resolve) => {
     try {
-      browserAPI.storage.sync.get([STORAGE_KEYS.AUTH_TOKEN], (result) => {
-        resolve(result?.[STORAGE_KEYS.AUTH_TOKEN] || null);
+      browserAPI.storage.sync.get([STORAGE_KEYS.OPENAI_API_KEY], (result) => {
+        resolve(result?.[STORAGE_KEYS.OPENAI_API_KEY] || null);
       });
     } catch (err) {
-      console.error("Error getting auth token:", err);
+      console.error("Error getting stored API key:", err);
       resolve(null);
     }
   });
@@ -44,16 +38,6 @@ function encodeUnicodeToBase64(str) {
     binary += String.fromCharCode(utf8Bytes[i]);
   }
   return btoa(binary);
-}
-
-// Unicode-safe base64 decoding
-function decodeBase64ToUnicode(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return new TextDecoder().decode(bytes);
 }
 
 async function handleMakeResume(msg) {
@@ -74,21 +58,20 @@ async function handleMakeResume(msg) {
       console.log("📄 Using default resume");
     }
 
-     console.log("🔑 API key managed by backend, calling tailor API...");
+    console.log("🔑 Using stored API key for tailor API...");
     console.log("🌐 Backend URL:", BASE_URL);
 
-    // Get auth token for extension
-    const token = await getAuthToken();
-    if (!token) {
-      throw new Error("Not authenticated. Please login to the extension first.");
+    const apiKey = await getStoredApiKey();
+    if (!apiKey) {
+      throw new Error("No OpenAI API key found. Save one in the extension or dashboard first.");
     }
-    console.log("🔐 Using auth token for tailor API");
+    console.log("🔐 Sending stored API key to tailor API");
 
     const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
+        "X-OpenAI-API-Key": apiKey
       },
       body: JSON.stringify({ 
         jobDescription: msg.jobDescription,
@@ -161,7 +144,7 @@ async function sendMessageWithRetry(tabId, message, retries = 3, delay = 200) {
   try {
     const resp = await browserAPI.tabs.sendMessage(tabId, message);
     return resp || { ok: true };
-  } catch (error) {
+  } catch {
     if (retries > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
       return sendMessageWithRetry(tabId, message, retries - 1, delay);

@@ -2,24 +2,38 @@
 
 import { useEffect } from "react";
 
+import { AppShell, PageHeader, SurfacePanel } from "@/app/components/AppShell";
+
 export const dynamic = "force-dynamic";
 
 export default function ExtensionAuthPage(): React.ReactElement {
   useEffect(() => {
-    // After Google OAuth redirects here, close this window
-    // The extension popup will detect login via polling
     const timer = setTimeout(() => {
       window.close();
     }, 500);
+
     return () => clearTimeout(timer);
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Completing authentication...</p>
+    <AppShell>
+      <div className="mx-auto max-w-3xl space-y-8">
+        <PageHeader
+          eyebrow="AutoJobs · Extension handoff"
+          title="Finishing the extension handoff."
+          description="This page should close automatically once the extension has what it needs."
+        />
+
+        <SurfacePanel className="flex min-h-56 flex-col items-center justify-center gap-5 text-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-2 border-[color:var(--line-strong)] border-t-[color:var(--foreground)]"></div>
+          <div className="space-y-2">
+            <p className="text-base font-medium text-[color:var(--foreground)]">Closing this window…</p>
+            <p className="section-copy max-w-md">
+              If the window stays open, return to the extension and continue there.
+            </p>
+          </div>
+        </SurfacePanel>
       </div>
-    </div>
+    </AppShell>
   );
 }

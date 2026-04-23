@@ -1,70 +1,99 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+
+import { AppShell, PageHeader, SurfaceHeading, SurfacePanel } from "@/app/components/AppShell";
 
 function ErrorContent(): React.ReactElement {
   const searchParams = useSearchParams();
-  const error = searchParams.get("error") || "Unknown error";
+  const error = searchParams.get("error") || "UnknownError";
 
   const errorMessages: Record<string, string> = {
     Configuration:
-      "There's a configuration issue with the authentication provider. Please contact support.",
-    AccessDenied: "Access was denied. Please try again.",
-    Callback: "There was an error processing your callback. Please try again.",
-    OAuthSignin:
-      "There was an error signing in with your provider. Please try again.",
-    OAuthCallback:
-      "There was an error processing your provider's callback. Please try again.",
-    OAuthCreateAccount: "Could not create a new account with your provider.",
-    EmailCreateAccount: "Could not create a new account with your email.",
-    EmailSignInError: "The sign in email was not sent.",
-    CredentialsSignin: "Sign in failed. Check the details you provided are correct.",
-    SessionCallback: "Session callback error.",
-    SessionSignInError: "Session sign in error.",
-    JWTSessionError: "JWT session error.",
+      "This auth route has a configuration mismatch. The main app no longer depends on hosted sign-in.",
+    AccessDenied: "Access was denied for this legacy auth flow.",
+    Callback: "The auth callback could not be completed.",
+    OAuthSignin: "The provider sign-in step failed.",
+    OAuthCallback: "The provider callback step failed.",
+    OAuthCreateAccount: "A provider account could not be created.",
+    EmailCreateAccount: "An email-based account could not be created.",
+    EmailSignInError: "The sign-in email could not be sent.",
+    CredentialsSignin: "The credential sign-in attempt failed.",
+    SessionCallback: "The session callback failed.",
+    SessionSignInError: "The session sign-in attempt failed.",
+    JWTSessionError: "The session token could not be processed.",
   };
 
-  const message = errorMessages[error] || `An error occurred: ${error}`;
+  const message = errorMessages[error] || `A legacy auth error occurred: ${error}`;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full text-center">
-        <h1 className="text-2xl font-bold mb-4 text-red-600">Authentication Error</h1>
-        <p className="text-gray-600 mb-6">{message}</p>
-        <div className="space-y-3">
-          <Link
-            href="/auth/signin"
-            className="block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg"
-          >
-            Try Again
-          </Link>
-          <Link
-            href="/"
-            className="block bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg"
-          >
-            Go Home
-          </Link>
-        </div>
-        <p className="text-xs text-gray-500 mt-6">Error code: {error}</p>
+    <AppShell>
+      <div className="mx-auto max-w-3xl space-y-8">
+        <PageHeader
+          eyebrow="AutoJobs · Legacy auth route"
+          title="This auth path is no longer part of the main flow."
+          description="If you were trying to use the web app, go back to the local-first setup: save your API key in the dashboard, then continue in the tailoring workspace."
+          actions={[
+            { href: "/dashboard", label: "Open dashboard", tone: "primary" },
+            { href: "/", label: "Open workspace", tone: "secondary" },
+          ]}
+        />
+
+        <SurfacePanel className="space-y-5">
+          <SurfaceHeading
+            title="Error details"
+            description="This message is here to make older auth links clearer, not to send you back into hosted sign-in."
+          />
+
+          <p className="status-note status-note-danger">{message}</p>
+
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <div className="space-y-1">
+              <p className="text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--foreground-soft)]">
+                Error code
+              </p>
+              <p className="text-sm text-[color:var(--foreground)]">{error}</p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Link href="/auth/signin" className="action-secondary">
+                Legacy sign-in page
+              </Link>
+              <Link href="/dashboard" className="action-subtle">
+                Use local setup instead
+              </Link>
+            </div>
+          </div>
+        </SurfacePanel>
       </div>
-    </div>
+    </AppShell>
+  );
+}
+
+function ErrorFallback(): React.ReactElement {
+  return (
+    <AppShell>
+      <div className="mx-auto max-w-3xl space-y-8">
+        <PageHeader
+          eyebrow="AutoJobs · Legacy auth route"
+          title="Loading the auth error details."
+          description="This page only exists to explain older auth links more clearly."
+        />
+
+        <SurfacePanel className="flex min-h-56 flex-col items-center justify-center gap-4 text-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-2 border-[color:var(--line-strong)] border-t-[color:var(--foreground)]"></div>
+          <p className="section-copy">Loading error details…</p>
+        </SurfacePanel>
+      </div>
+    </AppShell>
   );
 }
 
 export default function ErrorPage(): React.ReactElement {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading...</p>
-          </div>
-        </div>
-      }
-    >
+    <Suspense fallback={<ErrorFallback />}>
       <ErrorContent />
     </Suspense>
   );

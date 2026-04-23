@@ -2,22 +2,195 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Optional: your custom light/dark colors */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: oklch(0.97 0.004 95);
+  --surface: oklch(0.992 0.002 95);
+  --surface-muted: oklch(0.955 0.004 95);
+  --foreground: oklch(0.28 0.012 230);
+  --foreground-soft: oklch(0.45 0.01 230);
+  --line: oklch(0.9 0.006 95);
+  --line-strong: oklch(0.84 0.008 95);
+  --accent: oklch(0.45 0.05 205);
+  --accent-strong: oklch(0.37 0.048 205);
+  --accent-soft: oklch(0.94 0.015 205);
+  --success-soft: oklch(0.95 0.02 150);
+  --success-ink: oklch(0.43 0.05 150);
+  --danger-soft: oklch(0.95 0.02 25);
+  --danger-ink: oklch(0.48 0.06 25);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    background: var(--background);
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--accent-soft) 80%, white 20%);
+    color: var(--foreground);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
+@layer components {
+  .app-frame {
+    @apply min-h-screen;
+    background: var(--background);
+  }
 
+  .app-shell {
+    @apply mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10;
+  }
+
+  .app-header {
+    @apply flex flex-col gap-5 border-b pb-8;
+    border-color: var(--line);
+  }
+
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.18em];
+    color: var(--accent);
+  }
+
+  .page-title {
+    @apply max-w-3xl text-3xl font-semibold tracking-tight sm:text-4xl;
+    color: var(--foreground);
+  }
+
+  .page-copy {
+    @apply max-w-2xl text-sm leading-6 sm:text-[15px];
+    color: var(--foreground-soft);
+  }
+
+  .surface-panel {
+    @apply rounded-3xl border p-5 sm:p-6;
+    border-color: var(--line);
+    background: var(--surface);
+    box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 6%, transparent);
+  }
+
+  .surface-panel-muted {
+    background: var(--surface-muted);
+  }
+
+  .section-title {
+    @apply text-lg font-semibold tracking-tight;
+    color: var(--foreground);
+  }
+
+  .section-copy {
+    @apply text-sm leading-6;
+    color: var(--foreground-soft);
+  }
+
+  .field-label {
+    @apply mb-2 block text-sm font-medium;
+    color: var(--foreground);
+  }
+
+  .field-input,
+  .field-textarea {
+    @apply w-full rounded-2xl border px-4 py-3 text-sm shadow-sm outline-none transition;
+    border-color: var(--line-strong);
+    background: color-mix(in oklch, var(--surface) 92%, white 8%);
+    color: var(--foreground);
+  }
+
+  .field-input::placeholder,
+  .field-textarea::placeholder {
+    color: color-mix(in oklch, var(--foreground-soft) 70%, white 30%);
+  }
+
+  .field-input:focus,
+  .field-textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent-soft) 85%, white 15%);
+  }
+
+  .action-primary,
+  .action-secondary,
+  .action-subtle {
+    @apply inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition focus:outline-none;
+  }
+
+  .action-primary {
+    background: var(--foreground);
+    color: white;
+  }
+
+  .action-primary:hover {
+    background: color-mix(in oklch, var(--foreground) 92%, black 8%);
+  }
+
+  .action-primary:disabled,
+  .action-secondary:disabled,
+  .action-subtle:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .action-secondary {
+    border: 1px solid var(--line-strong);
+    background: color-mix(in oklch, var(--surface) 94%, white 6%);
+    color: var(--foreground);
+  }
+
+  .action-secondary:hover,
+  .action-subtle:hover {
+    background: color-mix(in oklch, var(--surface-muted) 86%, white 14%);
+  }
+
+  .action-subtle {
+    color: var(--accent-strong);
+    background: var(--accent-soft);
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-medium;
+    background: var(--surface-muted);
+    color: var(--foreground-soft);
+  }
+
+  .status-note {
+    @apply rounded-2xl border px-4 py-3 text-sm leading-6;
+    border-color: var(--line);
+    background: var(--surface-muted);
+    color: var(--foreground-soft);
+  }
+
+  .status-note-accent {
+    border-color: color-mix(in oklch, var(--accent) 25%, var(--line) 75%);
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+  }
+
+  .status-note-success {
+    border-color: color-mix(in oklch, var(--success-ink) 18%, var(--line) 82%);
+    background: var(--success-soft);
+    color: var(--success-ink);
+  }
+
+  .status-note-danger {
+    border-color: color-mix(in oklch, var(--danger-ink) 18%, var(--line) 82%);
+    background: var(--danger-soft);
+    color: var(--danger-ink);
+  }
+
+  .hairline-list > * + * {
+    @apply mt-4 border-t pt-4;
+    border-color: var(--line);
+  }
+
+  .muted-rule {
+    border-color: var(--line);
+  }
+}

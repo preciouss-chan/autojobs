@@ -24,12 +24,12 @@ function Toast({ message, onClose }: ToastProps): React.ReactElement {
     return () => clearTimeout(timer);
   }, [message, onClose]);
 
-  const bgColor =
+  const toneClassName =
     message.type === "success"
-      ? "bg-green-500"
+      ? "status-note status-note-success"
       : message.type === "error"
-        ? "bg-red-500"
-        : "bg-blue-500";
+        ? "status-note status-note-danger"
+        : "status-note status-note-accent";
 
   const icon =
     message.type === "success"
@@ -40,10 +40,10 @@ function Toast({ message, onClose }: ToastProps): React.ReactElement {
 
   return (
     <div
-      className={`${bgColor} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in slide-in-from-top fade-in`}
+      className={`${toneClassName} flex items-start gap-3 rounded-2xl shadow-sm`}
     >
-      <span className="font-bold text-lg">{icon}</span>
-      <span>{message.message}</span>
+      <span className="pt-0.5 text-sm font-semibold">{icon}</span>
+      <span className="text-sm leading-6">{message.message}</span>
     </div>
   );
 }
@@ -58,7 +58,7 @@ export function ToastContainer({
   onClose,
 }: ToastContainerProps): React.ReactElement {
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md">
+    <div className="fixed right-4 top-4 z-50 max-w-md space-y-2">
       {toasts.map((toast) => (
         <Toast
           key={toast.id}

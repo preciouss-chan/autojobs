@@ -29,12 +29,7 @@ import {
   parseResumeForTailoring,
   selectBulletsForRewrite,
 } from "@/app/lib/tailor/pipeline";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
-import { getUserId } from "@/lib/token";
-
-const TAILOR_CREDIT_COST = 1;
+import { checkRateLimit, getIdentifierFromRequest, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
 const resumePath = path.join(process.cwd(), "data", "resume.json");
 
 type TailoringDraft = {
@@ -536,58 +531,13 @@ Return only the full cover letter text.`;
   };
 }
 
-async function deductCredits(userId: string): Promise<void> {
-  try {
-    await prisma.credits.update({
-      where: { userId },
-      data: {
-        balance: {
-          decrement: TAILOR_CREDIT_COST,
-        },
-        lastDeductedAt: new Date(),
-      },
-    });
-
-    await prisma.transaction.create({
-      data: {
-        userId,
-        type: "deduction",
-        amount: -TAILOR_CREDIT_COST,
-        reason: "resume_tailoring",
-      },
-    });
-  } catch (error: unknown) {
-    console.error("Failed to deduct credits:", error);
-  }
-}
-
 export const runtime = "nodejs";
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
-    const authHeader = req.headers.get("Authorization");
-    let userId: string | null = null;
-    let userEmail: string | null = null;
-
-    if (authHeader) {
-      userId = getUserId(authHeader, undefined);
-    }
-
-    if (!userId) {
-      const session = await auth();
-      if (!session || !session.user?.email) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-      userId = (session.user as { id?: string })?.id ?? null;
-      userEmail = session.user.email;
-    }
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
+    const identifier = getIdentifierFromRequest(req);
     const rateLimitResult = checkRateLimit(
-      userEmail || userId,
+      identifier,
       "tailor",
       RATE_LIMIT_PRESETS.TAILOR.limit,
       RATE_LIMIT_PRESETS.TAILOR.windowMs
@@ -604,31 +554,11 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    const credits = await prisma.credits.findUnique({
-      where: { userId },
-    });
-
-    if (!credits) {
-      return NextResponse.json({ error: "Credits not found" }, { status: 404 });
-    }
-
-    if (credits.balance < TAILOR_CREDIT_COST) {
-      return NextResponse.json(
-        {
-          error: "Insufficient credits",
-          required: TAILOR_CREDIT_COST,
-          available: credits.balance,
-          message: `This operation requires ${TAILOR_CREDIT_COST} credits but you only have ${credits.balance}`,
-        },
-        { status: 402 }
-      );
-    }
-
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
         ErrorResponseSchema.parse({
-          error: "OpenAI API key not configured on server. Please set OPENAI_API_KEY environment variable.",
+          error: "OpenAI API key is required. Add it in the dashboard or set OPENAI_API_KEY on the server.",
         }),
         { status: 401 }
       );
@@ -732,7 +662,6 @@ export async function POST(req: Request): Promise<NextResponse> {
     });
 
     const validated = TailorResponseSchema.parse(responseDraft);
-    await deductCredits(userId);
 
     return NextResponse.json(validated);
   } catch (err: unknown) {

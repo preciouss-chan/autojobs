@@ -7,7 +7,6 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:pdf": "node scripts/test-pdf.js",
     "test:tailor": "npx tsx scripts/test-tailor-pipeline.ts",
     "migrate": "prisma migrate deploy",
     "migrate:dev": "prisma migrate dev"
@@ -30,8 +29,7 @@
     "prisma": "^6.19.2",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "string-similarity": "^4.0.4",
-    "stripe": "^20.4.1"
+    "string-similarity": "^4.0.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

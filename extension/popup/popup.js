@@ -4,22 +4,71 @@ console.log("🔥 popup.js loaded");
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
 // Import timeout utilities and config
-import { fetchWithTimeout, fetchJSON, API_TIMEOUTS } from '../shared/api-utils.js';
-import { parseError, showErrorNotification, showSuccessNotification, withErrorHandling } from '../shared/error-handler.js';
+import { fetchWithTimeout, API_TIMEOUTS } from '../shared/api-utils.js';
+import { parseError } from '../shared/error-handler.js';
 import { BACKEND_URL } from '../shared/config.js';
 
 // Detect Firefox (popup closes on file picker)
 const isFirefox = typeof browser !== 'undefined' && browser.runtime && browser.runtime.getBrowserInfo;
 
 // =============== AUTHENTICATION ===============
-const API_BASE_URL = `${BACKEND_URL}/api`;
 console.log("🌐 BACKEND_URL:", BACKEND_URL);
-console.log("🌐 API_BASE_URL:", API_BASE_URL);
 const STORAGE_KEYS = {
-  AUTH_TOKEN: "auth_token",
-  USER_EMAIL: "user_email",
-  CREDITS: "user_credits"
+  OPENAI_API_KEY: "openaiApiKey"
 };
+
+async function getStoredApiKey() {
+  return new Promise((resolve) => {
+    try {
+      browserAPI.storage.sync.get([STORAGE_KEYS.OPENAI_API_KEY], (result) => {
+        resolve(result?.[STORAGE_KEYS.OPENAI_API_KEY] || "");
+      });
+    } catch (err) {
+      console.error("Error getting API key:", err);
+      resolve("");
+    }
+  });
+}
+
+async function storeApiKey(apiKey) {
+  return new Promise((resolve) => {
+    try {
+      browserAPI.storage.sync.set({ [STORAGE_KEYS.OPENAI_API_KEY]: apiKey }, resolve);
+    } catch (err) {
+      console.error("Error storing API key:", err);
+      resolve();
+    }
+  });
+}
+
+async function clearStoredApiKey() {
+  return new Promise((resolve) => {
+    try {
+      browserAPI.storage.sync.remove([STORAGE_KEYS.OPENAI_API_KEY], resolve);
+    } catch (err) {
+      console.error("Error clearing API key:", err);
+      resolve();
+    }
+  });
+}
+
+function maskApiKey(value) {
+  if (!value || value.length <= 8) {
+    return "Saved";
+  }
+
+  return `${value.slice(0, 4)}••••${value.slice(-4)}`;
+}
+
+function setInlineStatus(element, type, message) {
+  if (!element) {
+    return;
+  }
+
+  element.style.display = "block";
+  element.className = type ? `status ${type}` : "status";
+  element.textContent = message;
+}
 
 function buildJobScraper() {
   return () => {
@@ -234,494 +283,97 @@ function buildJobScraper() {
   };
 }
 
-/**
- * Immediately check if session is still valid (used for instant logout detection)
- */
-async function checkSessionImmediate() {
-  try {
-    const storedToken = await getAuthToken();
-    if (!storedToken) {
-      return false;
-    }
-
-    const response = await fetchWithTimeout(`${API_BASE_URL}/extension/validate`, {
-      method: "GET",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json"
-      }
-    }, API_TIMEOUTS.VALIDATION);
-
-    if (!response.ok) {
-      return false;
-    }
-
-    const data = await response.json();
-    return data.valid === true;
-  } catch (err) {
-    console.log("ℹ️  Immediate validation check failed:", err.message);
-    return false;
-  }
-}
-
-/**
- * Listen for token sync messages from dashboard
- */
-window.addEventListener("message", async (event) => {
-  if (event.data.type === "EXTENSION_TOKEN_SYNC") {
-    console.log("✅ Received extension token from dashboard");
-    await storeAuthToken(event.data.token, event.data.email);
-    await updateAuthUI();
-    console.log("✅ Extension authentication synced with dashboard");
-  }
-});
-
-/**
- * Also listen via chrome runtime for more reliable cross-extension communication
- */
-browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  console.log("📩 Runtime message received:", msg);
-  
-  if (msg.action === "SYNC_TOKEN_FROM_DASHBOARD") {
-    console.log("✅ Received token sync via runtime message");
-    storeAuthToken(msg.token, msg.email).then(() => {
-      updateAuthUI();
-      sendResponse({ success: true });
-    });
-    return true; // Keep the message port open for async response
-  }
-  
-  if (msg.action === "LOGOUT_FROM_DASHBOARD") {
-    console.log("🚨 IMMEDIATE: Received logout signal from dashboard - verifying and logging out NOW");
-    
-    // Immediately check session validity (async)
-    checkSessionImmediate().then((isValid) => {
-      if (!isValid) {
-        console.log("✅ Server session confirmed invalid, performing logout");
-      } else {
-        console.log("⚠️  Server session still valid, but clearing locally due to dashboard logout signal");
-      }
-      
-      logout().then(async () => {
-        await updateAuthUI();
-        console.log("✅ Auto-logout completed immediately");
-        sendResponse({ success: true });
-      });
-    });
-    return true;
-  }
-});
-
-async function getAuthToken() {
-  return new Promise((resolve) => {
-    try {
-      browserAPI.storage.sync.get([STORAGE_KEYS.AUTH_TOKEN], (result) => {
-        resolve(result?.[STORAGE_KEYS.AUTH_TOKEN] || null);
-      });
-    } catch (err) {
-      console.error("Error getting auth token:", err);
-      resolve(null);
-    }
-  });
-}
-
-async function getUserEmail() {
-  return new Promise((resolve) => {
-    try {
-      browserAPI.storage.sync.get([STORAGE_KEYS.USER_EMAIL], (result) => {
-        resolve(result?.[STORAGE_KEYS.USER_EMAIL] || null);
-      });
-    } catch (err) {
-      console.error("Error getting user email:", err);
-      resolve(null);
-    }
-  });
-}
-
-async function storeAuthToken(token, email) {
-  return new Promise((resolve) => {
-    try {
-      browserAPI.storage.sync.set(
-        {
-          [STORAGE_KEYS.AUTH_TOKEN]: token,
-          [STORAGE_KEYS.USER_EMAIL]: email
-        },
-        resolve
-      );
-    } catch (err) {
-      console.error("Error storing auth token:", err);
-      resolve();
-    }
-  });
-}
-
-async function logout() {
-  return new Promise((resolve) => {
-    try {
-      browserAPI.storage.sync.remove(
-        [STORAGE_KEYS.AUTH_TOKEN, STORAGE_KEYS.USER_EMAIL],
-        resolve
-      );
-    } catch (err) {
-      console.error("Error logging out:", err);
-      resolve();
-    }
-  });
-}
-
-/**
- * Sign out both extension and dashboard
- */
-async function signOutEverywhere() {
-  // Sign out from extension (clear stored token)
-  await logout();
-  
-  // Tell the dashboard to log out
-  // We make a POST request to /api/auth/logout-everywhere which will clear the NextAuth cookie
-  try {
-    console.log("📤 Calling dashboard logout endpoint");
-    const response = await fetchWithTimeout(`${API_BASE_URL}/auth/logout-everywhere`, {
-      method: "POST",
-      credentials: "include", // IMPORTANT: Include cookies so the session can be verified
-      headers: {
-        "Content-Type": "application/json"
-      }
-    }, API_TIMEOUTS.LOGOUT);
-    
-    if (response.ok) {
-      console.log("✅ Dashboard also logged out (cookie cleared on server)");
-    } else {
-      // Even if 401, the extension is already logged out locally
-      console.log("ℹ️  Dashboard logout response:", response.status);
-    }
-  } catch (err) {
-    console.log("ℹ️  Could not reach dashboard, but extension is logged out locally");
-  }
-}
-
-async function refreshCreditsDisplay() {
-  try {
-    let token = await getAuthToken();
-    console.log("🔍 Refreshing credits... Token exists:", !!token);
-    if (!token) {
-      console.log("❌ No token found, hiding credits display");
-      document.getElementById("creditDisplay").style.display = "none";
-      return;
-    }
-
-    console.log("🌐 Fetching credits from:", `${API_BASE_URL}/credits/balance`);
-    let response = await fetchWithTimeout(`${API_BASE_URL}/credits/balance`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      }
-    }, API_TIMEOUTS.CREDITS);
-
-    console.log("📡 Credits response status:", response.status);
-    console.log("📡 Content-Type:", response.headers.get("content-type"));
-    
-    // If we get a 404 (Credits not found), try refreshing the token
-    if (response.status === 404) {
-      console.log("🔄 Got 404 - token may be stale. Attempting to refresh token...");
-      try {
-        // Try to get a fresh token from the extension/token endpoint
-        const tokenResponse = await fetchWithTimeout(`${API_BASE_URL}/extension/token`, {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json"
-          }
-        }, API_TIMEOUTS.TOKEN);
-
-        if (tokenResponse.ok) {
-          const tokenData = await tokenResponse.json();
-          console.log("✅ Got fresh token, updating stored token");
-          await storeAuthToken(tokenData.token, tokenData.email);
-          token = tokenData.token;
-
-          // Retry the credits call with the new token
-          console.log("🔄 Retrying credits fetch with fresh token...");
-          response = await fetchWithTimeout(`${API_BASE_URL}/credits/balance`, {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json"
-            }
-          }, API_TIMEOUTS.CREDITS);
-        }
-      } catch (tokenErr) {
-        console.error("⚠️ Could not refresh token:", tokenErr);
-      }
-    }
-    
-    if (!response.ok) {
-      const text = await response.text();
-      console.log("❌ Response not OK, body:", text.substring(0, 300));
-      throw new Error(`Failed to fetch credits: ${response.statusText}`);
-    }
-
-    const text = await response.text();
-    console.log("📡 Raw response text:", text.substring(0, 200));
-    
-    const data = JSON.parse(text);
-    console.log("✅ Credits data received:", data);
-    const creditCount = document.getElementById("creditCount");
-    if (creditCount) {
-      creditCount.textContent = data.balance;
-    }
-    document.getElementById("creditDisplay").style.display = "inline";
-    console.log("💰 Credits displayed:", data.balance);
-    return data.balance;
-  } catch (err) {
-    console.error("❌ Failed to refresh credits:", err);
-    // Show error but don't prevent UI from loading
-    const errorInfo = parseError(err, "Credits Check");
-    console.warn(`⚠️ ${errorInfo.displayMessage}`);
-    document.getElementById("creditDisplay").style.display = "none";
-    return 0;
-  }
-}
-
 async function updateAuthUI() {
   try {
-    const token = await getAuthToken();
-    const email = await getUserEmail();
-    console.log("🔄 Updating auth UI... Token:", !!token, "Email:", email);
-    const loginBtn = document.getElementById("loginBtn");
-    const logoutBtn = document.getElementById("logoutBtn");
-    const creditDisplay = document.getElementById("creditDisplay");
+    const apiKey = await getStoredApiKey();
+    console.log("🔄 Updating local-only UI... API key exists:", !!apiKey);
+    const apiKeyInput = document.getElementById("apiKeyInput");
+    const saveApiKeyBtn = document.getElementById("saveApiKeyBtn");
+    const clearApiKeyBtn = document.getElementById("clearApiKeyBtn");
+    const apiKeyState = document.getElementById("apiKeyState");
 
-    if (!loginBtn || !logoutBtn || !creditDisplay) {
+    if (!apiKeyInput || !saveApiKeyBtn || !clearApiKeyBtn || !apiKeyState) {
       console.warn("Auth UI elements not found");
       return;
     }
 
-    if (token) {
-      console.log("✅ User is logged in, showing logout button and refreshing credits");
-      loginBtn.style.display = "none";
-      logoutBtn.style.display = "inline-block";
-      await refreshCreditsDisplay();
-    } else {
-      console.log("❌ User is not logged in");
-      loginBtn.style.display = "inline-block";
-      logoutBtn.style.display = "none";
-      creditDisplay.style.display = "none";
-    }
+    apiKeyInput.value = apiKey;
+    apiKeyState.textContent = apiKey ? `Saved · ${maskApiKey(apiKey)}` : "No key saved";
+    saveApiKeyBtn.textContent = apiKey ? "Update key" : "Save key";
+    clearApiKeyBtn.disabled = !apiKey;
   } catch (err) {
     console.error("Error updating auth UI:", err);
   }
 }
 
-/**
- * Attach login button handler - deferred until DOM is ready
- */
-function attachLoginButtonHandler() {
-  const loginBtn = document.getElementById("loginBtn");
-  if (!loginBtn) {
-    console.warn("Login button not found, will retry");
+function attachSaveApiKeyHandler() {
+  const saveApiKeyBtn = document.getElementById("saveApiKeyBtn");
+  const apiKeyInput = document.getElementById("apiKeyInput");
+  const apiKeyStatus = document.getElementById("apiKeyStatus");
+
+  if (!saveApiKeyBtn || !apiKeyInput || !apiKeyStatus) {
+    console.warn("API key save UI not found");
     return false;
   }
 
-  loginBtn.addEventListener("click", async () => {
-    const loginBtn = document.getElementById("loginBtn");
-    loginBtn.disabled = true;
-    loginBtn.textContent = "Opening login...";
+  saveApiKeyBtn.addEventListener("click", async () => {
+    const nextKey = apiKeyInput.value.trim();
+    saveApiKeyBtn.disabled = true;
+    saveApiKeyBtn.textContent = "Saving...";
 
     try {
-      const width = 500;
-      const height = 600;
-      const left = Math.round(screen.width / 2 - width / 2);
-      const top = Math.round(screen.height / 2 - height / 2);
-
-      const windowFeatures = `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
-      // Open the signin page with a callback to the dashboard
-      const authWindow = window.open(
-        `${BACKEND_URL}/auth/signin?callbackUrl=${BACKEND_URL}/dashboard`,
-        "AutoJobsAuth",
-        windowFeatures
-      );
-
-      if (!authWindow) {
-        throw new Error("Failed to open login window. Check popup blocker.");
+      if (!nextKey) {
+        await clearStoredApiKey();
+        await updateAuthUI();
+        setInlineStatus(apiKeyStatus, "", "Removed the saved API key.");
+      } else {
+        await storeApiKey(nextKey);
+        await updateAuthUI();
+        setInlineStatus(apiKeyStatus, "success", `Saved ${maskApiKey(nextKey)} for this browser profile.`);
       }
-
-      console.log("🔓 Opening login window, polling for completion...");
-
-      // Poll to check if auth is complete
-      let checkCount = 0;
-      const checkInterval = setInterval(async () => {
-        checkCount++;
-        
-        try {
-          // Try to fetch the extension token - if it succeeds, user is logged in
-          const tokenResponse = await fetchWithTimeout(`${API_BASE_URL}/extension/token`, {
-            method: "GET",
-            credentials: "include", // Include cookies from the signin
-            headers: {
-              "Content-Type": "application/json"
-            }
-          }, API_TIMEOUTS.TOKEN);
-
-          if (tokenResponse.ok) {
-            const data = await tokenResponse.json();
-            console.log("✅ Token fetch successful! User is logged in.");
-            clearInterval(checkInterval);
-            
-            // Close the auth window after a short delay
-            setTimeout(() => {
-              try {
-                if (authWindow && !authWindow.closed) {
-                  authWindow.close();
-                }
-              } catch (err) {
-                // COOP policy might block this, that's OK
-                console.log("ℹ️  Could not close window (COOP policy)");
-              }
-            }, 500);
-            
-            // Store the token
-            await storeAuthToken(data.token, data.email);
-            await updateAuthUI();
-            loginBtn.disabled = false;
-            loginBtn.textContent = "Login";
-            console.log("✅ Login successful:", data.email);
-          }
-        } catch (err) {
-          // Still waiting for login, continue polling
-          if (checkCount % 10 === 0) {
-            console.log(`⏳ Still waiting for login... (${checkCount}s)`);
-          }
-        }
-
-        // Check if window was closed manually
-        try {
-          if (authWindow && authWindow.closed) {
-            console.log("🔗 Auth window closed by user");
-            clearInterval(checkInterval);
-          }
-        } catch (err) {
-          // COOP policy might block this check, that's OK
-          console.log("ℹ️  Could not check window status (COOP policy)");
-        }
-
-        // Timeout after 5 minutes
-        if (checkCount > 300) { // 300 * 1 second = 5 minutes
-          console.log("❌ Login timeout");
-          clearInterval(checkInterval);
-          try {
-            if (authWindow && !authWindow.closed) {
-              authWindow.close();
-            }
-          } catch (err) {
-            // COOP policy might block this, that's OK
-            console.log("ℹ️  Could not close window (COOP policy)");
-          }
-          loginBtn.disabled = false;
-          loginBtn.textContent = "Login";
-          alert("Login timeout. Please try again.");
-        }
-      }, 1000); // Check every second
-
     } catch (err) {
-      console.error("Login error:", err);
-      alert(`Login failed: ${err.message}`);
-      loginBtn.disabled = false;
-      loginBtn.textContent = "Login";
+      console.error("API key save error:", err);
+      setInlineStatus(apiKeyStatus, "error", `Failed to save API key: ${err.message}`);
+    } finally {
+      saveApiKeyBtn.disabled = false;
+      await updateAuthUI();
     }
   });
-  
-  console.log("✅ Login button handler attached");
+
+  apiKeyInput.addEventListener("input", () => {
+    apiKeyStatus.style.display = "none";
+  });
+
+  console.log("✅ API key save handler attached");
   return true;
 }
 
-/**
- * Session Poller: Check if user is still logged in
- * Runs while popup is open, detects real-time logout from dashboard
- */
-let sessionPollerInterval = null;
+function attachClearApiKeyHandler() {
+  const clearApiKeyBtn = document.getElementById("clearApiKeyBtn");
+  const apiKeyStatus = document.getElementById("apiKeyStatus");
 
-async function startSessionPoller() {
-  if (sessionPollerInterval) {
-    console.log("ℹ️  Session poller already running");
-    return;
-  }
-
-  console.log("🔄 Starting session poller (checks every 2 seconds)");
-
-   sessionPollerInterval = setInterval(async () => {
-    try {
-      const storedToken = await getAuthToken();
-      if (!storedToken) {
-        // No stored token, nothing to check
-        console.log("ℹ️  No stored token, skipping check");
-        return;
-      }
-
-      // Check if server session still valid
-      // IMPORTANT: credentials: "include" tells browser to send cookies even for cross-origin requests
-      const response = await fetchWithTimeout(`${API_BASE_URL}/extension/validate`, {
-        method: "GET",
-        credentials: "include", // Send cookies so server can check session
-        headers: {
-          "Content-Type": "application/json"
-        }
-      }, API_TIMEOUTS.VALIDATION);
-
-      if (!response.ok) {
-        console.log("❌ Validation request failed");
-        return;
-      }
-
-      const data = await response.json();
-      console.log("📊 Session validation:", data.valid ? "✅ valid" : "❌ invalid");
-
-      if (!data.valid) {
-        // Session is no longer valid! User was logged out on dashboard
-        console.log("⚠️  Server session no longer valid, logging out");
-        await logout();
-        await updateAuthUI();
-        console.log("✅ Auto-logout triggered by server session loss");
-      } else {
-        console.log("✅ Server session still valid");
-      }
-    } catch (err) {
-      // Network error - keep session, it's probably temporary
-      console.log("ℹ️  Session check failed (network issue?):", err.message);
-    }
-  }, 2000); // Check every 2 seconds for faster logout detection
-}
-
-function stopSessionPoller() {
-  if (sessionPollerInterval) {
-    clearInterval(sessionPollerInterval);
-    sessionPollerInterval = null;
-    console.log("🛑 Session poller stopped");
-  }
-}
-
-// Stop poller when popup closes
-window.addEventListener("unload", () => {
-  stopSessionPoller();
-});
-
-/**
- * Attach logout button handler - deferred until DOM is ready
- */
-function attachLogoutButtonHandler() {
-  const logoutBtn = document.getElementById("logoutBtn");
-  if (!logoutBtn) {
-    console.warn("Logout button not found, will retry");
+  if (!clearApiKeyBtn || !apiKeyStatus) {
+    console.warn("API key clear UI not found");
     return false;
   }
 
-  logoutBtn.addEventListener("click", async () => {
-    await signOutEverywhere();
-    await updateAuthUI();
-    console.log("✅ Logged out");
+  clearApiKeyBtn.addEventListener("click", async () => {
+    clearApiKeyBtn.disabled = true;
+
+    try {
+      await clearStoredApiKey();
+      await updateAuthUI();
+      setInlineStatus(apiKeyStatus, "", "Cleared the saved API key.");
+      console.log("✅ Stored API key cleared");
+    } catch (err) {
+      console.error("API key clear error:", err);
+      setInlineStatus(apiKeyStatus, "error", `Failed to clear API key: ${err.message}`);
+    } finally {
+      await updateAuthUI();
+    }
   });
-  
-  console.log("✅ Logout button handler attached");
+
+  console.log("✅ API key clear handler attached");
   return true;
 }
 
@@ -736,42 +388,14 @@ function attachLogoutButtonHandler() {
     console.log("🚀 DOM ready, initializing popup...");
     
     // Attach event listeners now that DOM is ready
-    if (!attachLoginButtonHandler()) {
-      console.error("Failed to attach login button handler");
+    if (!attachSaveApiKeyHandler()) {
+      console.error("Failed to attach API key save handler");
     }
-    if (!attachLogoutButtonHandler()) {
-      console.error("Failed to attach logout button handler");
+    if (!attachClearApiKeyHandler()) {
+      console.error("Failed to attach API key clear handler");
     }
     
-    // First check if we have a stored token
     await updateAuthUI();
-    
-    // Then try to fetch a fresh token from the backend in case the user just logged in on the dashboard
-    try {
-      console.log("🔄 Checking for dashboard login...");
-      const tokenResponse = await fetchWithTimeout(`${API_BASE_URL}/extension/token`, {
-        method: "GET",
-        credentials: "include", // Include cookies from dashboard login
-        headers: {
-          "Content-Type": "application/json"
-        }
-      }, API_TIMEOUTS.TOKEN);
-
-      if (tokenResponse.ok) {
-        const data = await tokenResponse.json();
-        console.log("✅ Found valid session from dashboard!");
-        // Store the token so extension continues to work
-        await storeAuthToken(data.token, data.email);
-        // Update UI to show we're logged in
-        await updateAuthUI();
-      }
-    } catch (err) {
-      // No dashboard session, that's fine - check for extension token instead
-      console.log("ℹ️  No active dashboard session");
-    }
-
-    // Start the session poller to detect real-time logouts
-    startSessionPoller();
   } catch (err) {
     console.error("Error initializing auth UI:", err);
   }
@@ -886,6 +510,12 @@ document.getElementById("clearResume").addEventListener("click", async () => {
 document.getElementById("generate").addEventListener("click", async () => {
   console.log("👉 Generate Resume clicked");
 
+  const apiKey = await getStoredApiKey();
+  if (!apiKey) {
+    alert("Save your OpenAI API key first.");
+    return;
+  }
+
   const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
 
   if (!tab?.id || !tab.url || /^chrome:\/\//.test(tab.url) || /^edge:\/\//.test(tab.url)) {
@@ -908,7 +538,7 @@ document.getElementById("generate").addEventListener("click", async () => {
   }
 
   if (!jobDescription || jobDescription.length < 50) {
-    alert("Could not extract job description.");
+    alert("Could not read the current job description.");
     return;
   }
 
@@ -916,7 +546,7 @@ document.getElementById("generate").addEventListener("click", async () => {
   const generateBtn = document.getElementById("generate");
   const originalText = generateBtn.textContent;
   generateBtn.disabled = true;
-  generateBtn.textContent = "Generating...";
+  generateBtn.textContent = "Tailoring...";
 
   // Call background
   try {
@@ -953,10 +583,10 @@ document.getElementById("generate").addEventListener("click", async () => {
         browserAPI.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-          title: 'Resume Generation Failed',
+         title: 'Tailoring failed',
           message: errorMsg
         });
-      } catch (notifErr) {
+      } catch {
         alert("Resume generation failed: " + errorMsg);
       }
       return;
@@ -965,17 +595,17 @@ document.getElementById("generate").addEventListener("click", async () => {
     console.log("🎯 MAKE_RESUME debug skills_to_add:", resp.debug?.skillsToAdd || null);
     console.log("🔍 MAKE_RESUME debug merged skills:", resp.debug?.mergedSkills || null);
     
-    const message = "Resume tailored and saved!";
+     const message = "Tailored resume saved. Preview it or upload it to the page.";
     
     try {
       browserAPI.notifications.create({
         type: 'basic',
         iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-        title: 'Resume Generated',
+         title: 'Resume ready',
         message: message
       });
-    } catch (notifErr) {
-      alert(message + " Now go to the apply page.");
+    } catch {
+       alert(message);
     }
   } catch (err) {
     // Reset button on runtime error
@@ -992,7 +622,7 @@ document.getElementById("previewResume").addEventListener("click", async () => {
   try {
     const resp = await sendRuntimeMessage({ action: "GET_TAILORED_RESUME" });
     if (!resp || !resp.base64) {
-      alert("No tailored resume found. Generate one first!");
+       alert("No tailored resume found. Tailor the current role first.");
       return;
     }
 
@@ -1017,13 +647,13 @@ document.getElementById("previewCoverLetter").addEventListener("click", async ()
   try {
     const resp = await sendRuntimeMessage({ action: "GET_COVER_LETTER" });
     if (!resp || !resp.base64) {
-      alert("No cover letter found. Generate a tailored resume first!");
+      alert("No cover letter found. Tailor the current role first.");
       return;
     }
 
     const statusEl = document.getElementById("downloadStatus");
     statusEl.style.display = "block";
-    statusEl.textContent = "Converting to PDF...";
+     statusEl.textContent = "Preparing cover letter PDF...";
     statusEl.className = "status";
 
     try {
@@ -1054,7 +684,7 @@ document.getElementById("previewCoverLetter").addEventListener("click", async ()
       // Revoke after a short delay to allow the tab to load
       setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
       
-      statusEl.textContent = "Cover letter opened in new tab!";
+       statusEl.textContent = "Cover letter opened in a new tab.";
       statusEl.className = "status success";
       setTimeout(() => {
         statusEl.style.display = "none";
@@ -1084,10 +714,10 @@ document.getElementById("uploadResume").addEventListener("click", async () => {
         browserAPI.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-          title: 'Upload Failed',
+           title: 'Resume upload failed',
           message: errorMsg
         });
-      } catch (notifErr) {
+      } catch {
         alert("Failed to upload resume: " + errorMsg);
       }
     } else {
@@ -1095,11 +725,11 @@ document.getElementById("uploadResume").addEventListener("click", async () => {
         browserAPI.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-          title: 'Resume Uploaded',
-          message: 'Resume uploaded successfully!'
+           title: 'Resume uploaded',
+           message: 'Resume uploaded to the page.'
         });
-      } catch (notifErr) {
-        alert("Resume uploaded successfully!");
+      } catch {
+         alert("Resume uploaded to the page.");
       }
     }
   } catch (err) {
@@ -1121,10 +751,10 @@ document.getElementById("uploadCoverLetter").addEventListener("click", async () 
         browserAPI.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-          title: 'Upload Failed',
+           title: 'Cover letter upload failed',
           message: errorMsg
         });
-      } catch (notifErr) {
+      } catch {
         alert("Failed to upload cover letter: " + errorMsg);
       }
     } else {
@@ -1132,11 +762,11 @@ document.getElementById("uploadCoverLetter").addEventListener("click", async () 
         browserAPI.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-          title: 'Cover Letter Uploaded',
-          message: 'Cover letter uploaded successfully!'
+           title: 'Cover letter uploaded',
+           message: 'Cover letter uploaded to the page.'
         });
-      } catch (notifErr) {
-        alert("Cover letter uploaded successfully!");
+      } catch {
+         alert("Cover letter uploaded to the page.");
       }
     }
   } catch (err) {
@@ -1171,7 +801,7 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
 
   const statusEl = document.getElementById("resumeStatus");
   statusEl.style.display = "block";
-  statusEl.textContent = "Uploading and parsing PDF...";
+   statusEl.textContent = "Uploading and parsing PDF...";
   statusEl.className = "status";
 
   try {
@@ -1183,15 +813,15 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     const formData = new FormData();
     formData.append("file", file);
 
-    const authToken = await getAuthToken();
-    if (!authToken) {
-      throw new Error("Not authenticated. Please sign in from the extension first.");
+    const apiKey = await getStoredApiKey();
+    if (!apiKey) {
+      throw new Error("Save your OpenAI API key first.");
     }
 
     const response = await fetchWithTimeout(`${BACKEND_URL}/api/parse-resume`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${authToken}`
+        "X-OpenAI-API-Key": apiKey
       },
       body: formData
     }, API_TIMEOUTS.PARSE);
@@ -1199,7 +829,6 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     // Check content type to ensure we got JSON, not HTML
     const contentType = response.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
-      const text = await response.text();
       throw new Error(`Server returned non-JSON response. Status: ${response.status}. Make sure the server is running.`);
     }
 
@@ -1226,7 +855,7 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
         statusEl.textContent = `Error: ${resp.error}`;
         statusEl.className = "status error";
       } else {
-        statusEl.textContent = `Resume parsed and cached successfully! (${file.name})`;
+         statusEl.textContent = `Resume cached for this browser session. (${file.name})`;
         statusEl.className = "status success";
         
         // Show clear button

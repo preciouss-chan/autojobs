@@ -1,37 +1,16 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { getUserId, verifyToken } from "@/lib/token";
-import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
+import { checkRateLimit, getIdentifierFromRequest, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
 import { ResumeSchema, ErrorResponseSchema } from "@/app/lib/schemas";
 import { LLM_CONFIG } from "@/app/lib/llm-config";
 
 export const runtime = "nodejs";
 
-// Credit cost for resume parsing (after first free use)
-const PARSE_RESUME_CREDIT_COST = 5;
-
 export async function POST(req: Request): Promise<NextResponse> {
   try {
-    const authHeader = req.headers.get("Authorization");
-    const tokenPayload = verifyToken(authHeader);
-    const session = await auth();
-    const sessionUserId = (session?.user as any)?.id;
-    const userId = getUserId(authHeader, sessionUserId);
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userEmail = tokenPayload?.email || session?.user?.email;
-    if (!userEmail) {
-      return NextResponse.json({ error: "User email not found" }, { status: 401 });
-    }
-
-    // Apply rate limiting per user
+    const identifier = getIdentifierFromRequest(req);
     const rateLimitResult = checkRateLimit(
-      userEmail,
+      identifier,
       "parse-resume",
       RATE_LIMIT_PRESETS.PARSE_RESUME.limit,
       RATE_LIMIT_PRESETS.PARSE_RESUME.windowMs
@@ -48,37 +27,13 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    // Check if user has already used their free resume parse
-    const credits = await prisma.credits.findUnique({
-      where: { userId },
-    });
-
-    if (!credits) {
-      return NextResponse.json({ error: "Credits not found" }, { status: 404 });
-    }
-
-    // If not first time, check credit balance
-    if (credits.usedFreeResumeParse) {
-      if (credits.balance < PARSE_RESUME_CREDIT_COST) {
-        return NextResponse.json(
-          {
-            error: "Insufficient credits",
-            required: PARSE_RESUME_CREDIT_COST,
-            available: credits.balance,
-            message: `This operation requires ${PARSE_RESUME_CREDIT_COST} credits but you only have ${credits.balance}`,
-          },
-          { status: 402 } // Payment required
-        );
-      }
-    }
-
     // Get API key from header or fallback to environment variable
     const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
         ErrorResponseSchema.parse({
-          error: "OpenAI API key is required. Please set it in extension settings or environment variable.",
+          error: "OpenAI API key is required. Add it in the dashboard or set OPENAI_API_KEY on the server.",
         }),
         { status: 401 }
       );
@@ -105,32 +60,33 @@ export async function POST(req: Request): Promise<NextResponse> {
      const buffer = Buffer.from(arrayBuffer);
      const uint8Array = new Uint8Array(buffer);
 
-     if (
-       typeof globalThis.DOMMatrix === "undefined" ||
-       typeof globalThis.ImageData === "undefined"
-     ) {
-       const { DOMMatrix, ImageData } = require("canvas");
+      if (
+        typeof globalThis.DOMMatrix === "undefined" ||
+        typeof globalThis.ImageData === "undefined"
+      ) {
+        const canvasModule = await import("canvas");
+        const { DOMMatrix, ImageData } = canvasModule;
 
-       if (typeof globalThis.DOMMatrix === "undefined") {
-         globalThis.DOMMatrix = DOMMatrix;
-       }
-       if (typeof globalThis.ImageData === "undefined") {
-         globalThis.ImageData = ImageData;
-       }
-     }
+        if (typeof globalThis.DOMMatrix === "undefined") {
+          globalThis.DOMMatrix = DOMMatrix as unknown as typeof globalThis.DOMMatrix;
+        }
+        if (typeof globalThis.ImageData === "undefined") {
+          globalThis.ImageData = ImageData as unknown as typeof globalThis.ImageData;
+        }
+      }
 
-     const { PDFParse } = require("pdf-parse");
-     const { getData } = require("pdf-parse/worker");
-     PDFParse.setWorker(getData());
+      const { PDFParse } = await import("pdf-parse");
+      const { getData } = await import("pdf-parse/worker");
+      PDFParse.setWorker(getData());
      
-     // Parse PDF and extract text
-      let extractedText: string = "";
-      try {
-        const parser = new PDFParse(uint8Array);
-        await parser.load();
+      // Parse PDF and extract text
+       let extractedText: string = "";
+       try {
+        const parser = new PDFParse({ data: uint8Array });
         const result = await parser.getText();
         extractedText = result.text || "";
-      } catch (pdfErr) {
+        await parser.destroy();
+       } catch (pdfErr) {
         console.error("PDF parsing failed:", pdfErr);
         return NextResponse.json(
          ErrorResponseSchema.parse({
@@ -220,58 +176,7 @@ Extract all information accurately. If a field is not present, use an empty stri
     try {
       const parsed = JSON.parse(jsonString);
       const validated = ResumeSchema.parse(parsed);
-      
-      // Deduct credits after successful parsing (if not first time)
-      try {
-        if (credits.usedFreeResumeParse) {
-          // Subsequent parses: deduct 5 credits
-          await prisma.credits.update({
-            where: { userId },
-            data: {
-              balance: {
-                decrement: PARSE_RESUME_CREDIT_COST,
-              },
-              lastDeductedAt: new Date(),
-            },
-          });
 
-          // Record transaction
-          await prisma.transaction.create({
-            data: {
-              userId,
-              type: "deduction",
-              amount: -PARSE_RESUME_CREDIT_COST,
-              reason: "resume_parsing",
-            },
-          });
-
-          console.log(`Deducted ${PARSE_RESUME_CREDIT_COST} credits for user ${userId}`);
-        } else {
-          // First time: mark as used free parse, no deduction
-          await prisma.credits.update({
-            where: { userId },
-            data: {
-              usedFreeResumeParse: true,
-            },
-          });
-
-          // Record transaction for audit trail
-          await prisma.transaction.create({
-            data: {
-              userId,
-              type: "grant",
-              amount: 0,
-              reason: "free_resume_parsing",
-            },
-          });
-
-          console.log(`Used free resume parse for user ${userId}`);
-        }
-      } catch (creditError: unknown) {
-        console.error("Failed to update credits:", creditError);
-        // Don't fail the request if credit deduction fails, just log it
-      }
-      
       return NextResponse.json(validated);
     } catch (parseErr: unknown) {
       console.error("Failed to parse/validate resume response:", parseErr);

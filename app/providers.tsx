@@ -1,6 +1,5 @@
 "use client";
 
-import { SessionProvider } from "next-auth/react";
 import React from "react";
 
 interface ProvidersProps {
@@ -8,5 +7,5 @@ interface ProvidersProps {
 }
 
 export function Providers({ children }: ProvidersProps): React.ReactElement {
-  return <SessionProvider>{children}</SessionProvider>;
+  return <>{children}</>;
 }

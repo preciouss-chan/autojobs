@@ -1,312 +1,125 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Auto Apply AI</title>
+    <title>AutoJobs Extension</title>
     <link rel="stylesheet" href="error-notifications.css">
-    <style>
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      
-      body {
-        margin: 0;
-        padding: 0;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        width: 380px;
-        background: #ffffff;
-        color: #1f2937;
-      }
-      
-      .header {
-        background: #ffffff;
-        padding: 16px 20px;
-        border-bottom: 1px solid #e5e7eb;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      
-      .header h2 {
-        margin: 0;
-        font-size: 16px;
-        font-weight: 600;
-        color: #0891b2;
-      }
-      
-      .content {
-        background: white;
-        padding: 20px;
-      }
-      
-      .card {
-        background: white;
-        border-radius: 8px;
-        padding: 12px;
-        margin-bottom: 12px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        border: 1px solid #e0e7ff;
-        border-left: 3px solid #0891b2;
-        transition: box-shadow 0.15s;
-      }
-      
-      .card:hover {
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
-      }
-      
-      .card-title {
-        font-size: 12px;
-        font-weight: 600;
-        color: #0891b2;
-        text-transform: none;
-        letter-spacing: 0;
-        margin-bottom: 8px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      
-      .card-title::before {
-        display: none;
-      }
-      
-      button {
-        width: 100%;
-        padding: 10px 14px;
-        margin-top: 6px;
-        border-radius: 6px;
-        border: none;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 500;
-        transition: background-color 0.15s;
-        position: relative;
-        overflow: hidden;
-      }
-      
-      button:first-of-type {
-        margin-top: 0;
-      }
-      
-      button:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-      
-      button:not(:disabled):hover {
-        opacity: 0.85;
-      }
-      
-      button:not(:disabled):active {
-        opacity: 1;
-      }
-      
-      #dashboardBtn, #generate {
-         background: #0891b2;
-         color: white;
-         font-size: 14px;
-         padding: 11px;
-         margin-bottom: 12px;
-       }
-       
-       #dashboardBtn:hover, #generate:hover {
-         background: #0e7490;
-       }
-      
-      #uploadResume {
-        background: #10b981;
-        color: white;
-      }
-      
-      #uploadCoverLetter {
-        background: #3b82f6;
-        color: white;
-      }
-      
-      #previewResume {
-        background: #10b981;
-        color: white;
-      }
-      
-      #previewCoverLetter {
-        background: #3b82f6;
-        color: white;
-      }
-      
-      .file-input-wrapper {
-        position: relative;
-        margin-bottom: 8px;
-      }
-      
-      input[type="file"] {
-        width: 100%;
-        padding: 10px;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        font-size: 12px;
-        background: #fafbfc;
-        cursor: pointer;
-        transition: border-color 0.15s;
-      }
-      
-      input[type="file"]:hover {
-        border-color: #bcc0c8;
-        background: #f3f4f6;
-      }
-      
-      .file-controls {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-      }
-      
-      .file-controls label {
-        font-size: 13px;
-        font-weight: 600;
-        color: #374151;
-        margin: 0;
-      }
-      
-      #clearResume {
-        display: none;
-        padding: 4px 10px;
-        font-size: 11px;
-        background: #ef4444;
-        color: white;
-        border-radius: 4px;
-        width: auto;
-        margin: 0;
-        font-weight: 500;
-      }
-      
-      #clearResume:hover {
-        background: #dc2626;
-      }
-      
-      .status {
-        font-size: 12px;
-        margin-top: 10px;
-        padding: 8px 12px;
-        border-radius: 6px;
-        text-align: center;
-        font-weight: 500;
-        display: none;
-      }
-      
-      .status.success {
-        background: #ecfdf5;
-        color: #065f46;
-        border: 1px solid #6ee7b7;
-      }
-      
-      .status.error {
-        background: #fef2f2;
-        color: #991b1b;
-        border: 1px solid #fca5a5;
-      }
-      
-      .button-group {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-      }
-      
-      .button-group button {
-        margin-top: 0;
-      }
-      
-      .divider {
-        height: 1px;
-        background: #edeef2;
-        margin: 12px 0;
-      }
-
-      #loginBtn:hover {
-        background: #5a67d8;
-      }
-
-      #logoutBtn:hover {
-        background: #dc2626;
-      }
-
-      .auth-message {
-        padding: 12px;
-        border-radius: 6px;
-        font-size: 12px;
-        margin-top: 12px;
-        text-align: center;
-      }
-
-      .auth-message.warning {
-        background: #fffbeb;
-        color: #92400e;
-        border: 1px solid #fcd34d;
-      }
-
-      .auth-message.error {
-        background: #fef2f2;
-        color: #991b1b;
-        border: 1px solid #fca5a5;
-      }
-    </style>
+    <link rel="stylesheet" href="popup.css">
   </head>
 
-  <body>
-    <div class="header">
-      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-        <h2 style="margin: 0;">Auto Apply AI</h2>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <span id="creditDisplay" style="font-size: 11px; font-weight: 500; color: #0891b2; display: none;">
-             Credits: <span id="creditCount">-</span>
-           </span>
-           <button id="loginBtn" style="padding: 5px 10px; font-size: 11px; background: #0891b2; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Login</button>
-           <button id="logoutBtn" style="padding: 5px 10px; font-size: 11px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Logout</button>
-        </div>
-      </div>
-    </div>
+  <body class="popup-page">
+    <div class="popup-shell">
+      <header class="popup-header">
+        <div class="popup-topline">
+          <div class="title-block">
+            <p class="eyebrow">AutoJobs extension</p>
+            <h1 class="page-title">Tailor the current role fast.</h1>
+          </div>
 
-    <div class="content">
-    <button id="dashboardBtn">Dashboard</button>
-    <button id="generate">Generate Tailored Resume</button>
+          <div class="header-tools">
+            <span id="apiKeyState" class="header-badge">No key saved</span>
+          </div>
+        </div>
 
-      <div class="card">
-        <div class="card-title">Upload Resume</div>
-        <div class="file-controls">
-          <label for="resumeFile">PDF Resume</label>
-          <button id="clearResume">Clear</button>
-        </div>
-        <div class="file-input-wrapper">
-          <input type="file" id="resumeFile" accept=".pdf,application/pdf" />
-        </div>
-        <div id="resumeStatus" class="status"></div>
-      </div>
+        <p class="page-copy">
+          Keep the same local-first flow as the web app: save your key, cache a resume once, tailor the role, then preview or upload.
+        </p>
+      </header>
 
-      <div class="card">
-        <div class="card-title">Preview</div>
-        <div class="button-group">
-          <button id="previewResume">Preview Resume</button>
-          <button id="previewCoverLetter">Preview Cover Letter</button>
-        </div>
-        <div id="downloadStatus" class="status"></div>
-      </div>
+      <main class="popup-main">
+        <section class="surface-panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Session key</p>
+              <h2 class="section-title">Save your OpenAI key in the popup.</h2>
+            </div>
+          </div>
 
-      <div class="card">
-        <div class="card-title">Upload to Page</div>
-        <div class="button-group">
-          <button id="uploadResume">Upload Resume</button>
-          <button id="uploadCoverLetter">Upload Cover Letter</button>
-        </div>
-      </div>
+          <p class="section-copy">
+            The extension stores your key with the same local-first BYO-key flow used across AutoJobs.
+          </p>
 
-      <div class="card">
-        <div class="card-title">Application Helper</div>
-        <button id="openChatbot" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white;">Open Chatbot</button>
-        <div style="font-size: 11px; color: #6b7280; margin-top: 8px; text-align: center;">
-          Get help answering application questions
+          <label for="apiKeyInput" class="field-label">OpenAI API key</label>
+          <input type="password" id="apiKeyInput" class="text-input" placeholder="sk-..." autocomplete="off">
+
+          <div class="button-group">
+            <button id="saveApiKeyBtn" class="action-button action-button-primary">Save key</button>
+            <button id="clearApiKeyBtn" class="action-button action-button-secondary">Clear key</button>
+          </div>
+
+          <div id="apiKeyStatus" class="status"></div>
+        </section>
+
+        <div class="primary-actions">
+          <button id="generate" class="action-button action-button-primary">
+            Tailor current role
+          </button>
+          <button id="dashboardBtn" class="action-button action-button-secondary">
+            Open dashboard
+          </button>
         </div>
-      </div>
+
+        <section class="surface-panel surface-panel-muted">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Resume cache</p>
+              <h2 class="section-title">Use one PDF across applications.</h2>
+            </div>
+            <button id="clearResume" class="small-button small-button-danger">Clear</button>
+          </div>
+
+          <p class="section-copy">
+            Upload a PDF once to cache it for tailoring, previewing, and page uploads in this browser.
+          </p>
+
+          <label for="resumeFile" class="field-label">Resume PDF</label>
+          <input type="file" id="resumeFile" class="file-input" accept=".pdf,application/pdf">
+          <div id="resumeStatus" class="status"></div>
+        </section>
+
+        <section class="surface-panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Preview</p>
+              <h2 class="section-title">Check the draft before uploading.</h2>
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button id="previewResume" class="action-button action-button-secondary">Preview resume</button>
+            <button id="previewCoverLetter" class="action-button action-button-secondary">Preview cover letter</button>
+          </div>
+          <div id="downloadStatus" class="status"></div>
+        </section>
+
+        <section class="surface-panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Upload to page</p>
+              <h2 class="section-title">Send files into the current application.</h2>
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button id="uploadResume" class="action-button action-button-secondary">Upload resume</button>
+            <button id="uploadCoverLetter" class="action-button action-button-secondary">Upload cover letter</button>
+          </div>
+        </section>
+
+        <section class="surface-panel surface-panel-muted">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Application helper</p>
+              <h2 class="section-title">Draft sharper written answers.</h2>
+            </div>
+          </div>
+
+          <p class="section-copy">
+            Open the helper with the current job context and your saved resume to shape practical responses.
+          </p>
+
+          <button id="openChatbot" class="action-button action-button-subtle">Open helper</button>
+        </section>
+      </main>
     </div>
 
     <script src="../shared/browser-polyfill.js"></script>

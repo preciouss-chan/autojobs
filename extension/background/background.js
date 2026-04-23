@@ -9,19 +9,17 @@ console.log("🔥 Background worker loaded.");
 
 // Storage keys
 const STORAGE_KEYS = {
-  AUTH_TOKEN: "auth_token",
-  USER_EMAIL: "user_email"
+  OPENAI_API_KEY: "openaiApiKey"
 };
 
-// Helper to get auth token from storage
-function getAuthToken() {
+function getStoredApiKey() {
   return new Promise((resolve) => {
     try {
-      chrome.storage.sync.get([STORAGE_KEYS.AUTH_TOKEN], (result) => {
-        resolve(result?.[STORAGE_KEYS.AUTH_TOKEN] || null);
+      chrome.storage.sync.get([STORAGE_KEYS.OPENAI_API_KEY], (result) => {
+        resolve(result?.[STORAGE_KEYS.OPENAI_API_KEY] || null);
       });
     } catch (err) {
-      console.error("Error getting auth token:", err);
+      console.error("Error getting stored API key:", err);
       resolve(null);
     }
   });
@@ -36,16 +34,6 @@ function encodeUnicodeToBase64(str) {
     binary += String.fromCharCode(utf8Bytes[i]);
   }
   return btoa(binary);
-}
-
-// Unicode-safe base64 decoding
-function decodeBase64ToUnicode(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return new TextDecoder().decode(bytes);
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -63,7 +51,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         {
           action: "LOGOUT_FROM_DASHBOARD"
         },
-        (resp) => {
+        () => {
           if (chrome.runtime.lastError) {
             console.log("ℹ️  Popup not open, but logout processed in background");
           } else {
@@ -71,12 +59,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
         }
       );
-    } catch (err) {
+    } catch {
       console.log("ℹ️  Could not relay to popup");
     }
     
     // Also process locally - clear extension storage
-    chrome.storage.sync.remove(["auth_token", "user_email"], () => {
+    chrome.storage.sync.remove([STORAGE_KEYS.OPENAI_API_KEY], () => {
       console.log("✅ Extension storage cleared");
     });
     
@@ -111,24 +99,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           console.log("📄 Using default resume");
         }
 
-        console.log("🔑 API key managed by backend, calling tailor API...");
+        console.log("🔑 Using stored API key for tailor API...");
         console.log("🌐 Backend URL:", BASE_URL);
         console.log("📋 Request URL will be:", `${BASE_URL}/api/tailor`);
         console.log("📄 Job description payload:", msg.jobDescription);
 
-        // Get auth token for extension
-        const token = await getAuthToken();
-        if (!token) {
-          throw new Error("Not authenticated. Please login to the extension first.");
+        const apiKey = await getStoredApiKey();
+        if (!apiKey) {
+          throw new Error("No OpenAI API key found. Save one in the extension or dashboard first.");
         }
-        console.log("🔐 Using auth token for tailor API");
+        console.log("🔐 Sending stored API key to tailor API");
 
-        // Call tailor API with resume data and auth token
         const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
+            "X-OpenAI-API-Key": apiKey
           },
           body: JSON.stringify({ 
             jobDescription: msg.jobDescription,

@@ -141,7 +141,7 @@ async function sendMessage() {
   } catch (error) {
     console.error('Chat error:', error);
     removeLoadingMessage(loadingId);
-    addMessage('assistant', `Error: ${error.message}. Make sure the backend server is running.`);
+    addMessage('assistant', `Error: ${error.message}. Make sure the local server is running.`);
   }
 }
 
@@ -152,7 +152,7 @@ function addMessage(role, content) {
   
   const avatar = document.createElement('div');
   avatar.className = 'message-avatar';
-  avatar.textContent = role === 'user' ? 'You' : 'AI';
+  avatar.textContent = role === 'user' ? 'You' : 'AJ';
   
   const messageContent = document.createElement('div');
   messageContent.className = 'message-content';
@@ -176,7 +176,7 @@ function addLoadingMessage() {
   
   const avatar = document.createElement('div');
   avatar.className = 'message-avatar';
-  avatar.textContent = 'AI';
+  avatar.textContent = 'AJ';
   
   const loadingContent = document.createElement('div');
   loadingContent.className = 'loading';

@@ -1,24 +1,20 @@
-/* extension/popup/error-notifications.css */
-/* Styles for error handling UI components */
-
-/* Error Notification */
 .error-notification {
   position: fixed;
   top: 12px;
   right: 12px;
-  background: #fee;
-  border: 1px solid #f66;
-  border-radius: 6px;
-  padding: 12px 16px;
-  max-width: 300px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  font-size: 13px;
-  z-index: 10000;
-  animation: slideIn 0.3s ease-out;
+   background: oklch(0.95 0.02 25);
+   border: 1px solid color-mix(in oklch, oklch(0.48 0.06 25) 18%, oklch(0.9 0.006 95) 82%);
+   border-radius: 18px;
+   padding: 12px 16px;
+   max-width: 300px;
+   box-shadow: 0 1px 2px color-mix(in oklch, oklch(0.28 0.012 230) 8%, transparent);
+   font-size: 13px;
+   z-index: 10000;
+   animation: slideIn 0.3s ease-out;
 }
 
 .error-content {
-  color: #333;
+   color: oklch(0.28 0.012 230);
 }
 
 .error-header {
@@ -29,31 +25,31 @@
 }
 
 .error-title {
-  font-weight: 600;
-  color: #d33;
-  font-size: 14px;
+   font-weight: 600;
+   color: oklch(0.48 0.06 25);
+   font-size: 14px;
 }
 
 .error-close {
-  background: none;
-  border: none;
-  color: #999;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 0;
+   background: none;
+   border: none;
+   color: oklch(0.45 0.01 230);
+   font-size: 20px;
+   cursor: pointer;
+   padding: 0;
   margin: -4px -4px -4px 8px;
   line-height: 1;
 }
 
 .error-close:hover {
-  color: #666;
+   color: oklch(0.28 0.012 230);
 }
 
 .error-message {
-  margin: 0 0 8px 0;
-  color: #666;
-  font-size: 12px;
-  line-height: 1.4;
+   margin: 0 0 8px 0;
+   color: oklch(0.45 0.01 230);
+   font-size: 12px;
+   line-height: 1.4;
 }
 
 .error-actions {
@@ -64,52 +60,47 @@
 }
 
 .error-retry-btn {
-  background: #d33;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s;
+   background: oklch(0.48 0.06 25);
+   color: white;
+   border: none;
+   border-radius: 999px;
+   padding: 6px 12px;
+   font-size: 12px;
+   font-weight: 500;
+   cursor: pointer;
+   transition: background 0.2s;
 }
 
 .error-retry-btn:hover {
-  background: #b22;
+   background: color-mix(in oklch, oklch(0.48 0.06 25) 92%, black 8%);
 }
 
-.error-retry-btn:active {
-  background: #933;
-}
-
-/* Success Notification */
 .success-notification {
   position: fixed;
   top: 12px;
   right: 12px;
-  background: #efe;
-  border: 1px solid #6f6;
-  border-radius: 6px;
-  padding: 12px 16px;
-  max-width: 300px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  font-size: 13px;
-  z-index: 10000;
-  animation: slideIn 0.3s ease-out;
+   background: oklch(0.95 0.02 150);
+   border: 1px solid color-mix(in oklch, oklch(0.43 0.05 150) 18%, oklch(0.9 0.006 95) 82%);
+   border-radius: 18px;
+   padding: 12px 16px;
+   max-width: 300px;
+   box-shadow: 0 1px 2px color-mix(in oklch, oklch(0.28 0.012 230) 8%, transparent);
+   font-size: 13px;
+   z-index: 10000;
+   animation: slideIn 0.3s ease-out;
 }
 
 .success-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #363;
+   display: flex;
+   align-items: center;
+   gap: 8px;
+   color: oklch(0.43 0.05 150);
 }
 
 .success-icon {
-  font-weight: bold;
-  color: #6f6;
-  font-size: 16px;
+   font-weight: bold;
+   color: oklch(0.43 0.05 150);
+   font-size: 16px;
 }
 
 .success-notification p {
@@ -117,29 +108,30 @@
   font-size: 12px;
 }
 
-/* Loading Indicator */
 .loading-indicator {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
-  padding: 24px 32px;
-  border-radius: 8px;
-  text-align: center;
-  z-index: 10001;
-  animation: fadeIn 0.2s ease-out;
+   background: oklch(0.992 0.002 95);
+   color: oklch(0.28 0.012 230);
+   padding: 24px 32px;
+   border: 1px solid oklch(0.9 0.006 95);
+   border-radius: 24px;
+   text-align: center;
+   z-index: 10001;
+   animation: fadeIn 0.2s ease-out;
+   box-shadow: 0 1px 2px color-mix(in oklch, oklch(0.28 0.012 230) 8%, transparent);
 }
 
 .loading-indicator .spinner {
-  width: 32px;
-  height: 32px;
-  margin: 0 auto 12px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+   width: 32px;
+   height: 32px;
+   margin: 0 auto 12px;
+   border: 3px solid color-mix(in oklch, oklch(0.45 0.01 230) 24%, white 76%);
+   border-top-color: oklch(0.28 0.012 230);
+   border-radius: 50%;
+   animation: spin 0.8s linear infinite;
 }
 
 .loading-indicator p {
@@ -148,7 +140,6 @@
   font-weight: 500;
 }
 
-/* Animations */
 @keyframes slideIn {
   from {
     opacity: 0;
@@ -175,7 +166,6 @@
   }
 }
 
-/* Stack multiple notifications */
 .error-notification:nth-child(2),
 .success-notification:nth-child(2) {
   top: 66px;

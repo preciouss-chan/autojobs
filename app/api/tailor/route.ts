@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import type OpenAI from "openai";
 import {
   ErrorResponseSchema,
   StructuredJobSignalsSchema,
@@ -14,6 +14,7 @@ import type {
   StructuredJobSignals,
   TailorResponse,
 } from "@/app/lib/schemas";
+import { createLlmClient } from "@/app/lib/llm-client";
 import { LLM_CONFIG } from "@/app/lib/llm-config";
 import {
   acceptBulletRewrites,
@@ -97,6 +98,7 @@ function sanitizeCoverLetter(rawText: string, candidateName: string): string {
 
 async function polishCoverLetterTone(
   client: OpenAI,
+  model: string,
   coverLetter: string,
   resume: Resume,
   signals: StructuredJobSignals,
@@ -133,7 +135,7 @@ ${candidateName}
 Return only the full cover letter text.`;
 
   const response = await client.chat.completions.create({
-    model: LLM_CONFIG.DEFAULTS.model,
+    model,
     messages: [{ role: "user", content: polishPrompt }],
     temperature: LLM_CONFIG.DETERMINISTIC.temperature,
   });
@@ -301,6 +303,7 @@ function extractQualificationSectionTerms(jobDescription: string): {
 
 async function extractStructuredJobSignals(
   client: OpenAI,
+  model: string,
   jobDescription: string,
   jobRequirements?: JobRequirements
 ): Promise<StructuredJobSignals> {
@@ -348,7 +351,7 @@ Detected qualification-section hints from the raw posting:
 - Preferred qualifications terms: ${qualificationTerms.preferred.join(", ") || "none detected"}`;
 
   const response = await client.chat.completions.create({
-    model: LLM_CONFIG.DEFAULTS.model,
+    model,
     messages: [{ role: "user", content: `${prompt}${qualificationContext}` }],
     temperature: LLM_CONFIG.DETERMINISTIC.temperature,
     response_format: { type: "json_object" },
@@ -382,6 +385,7 @@ Detected qualification-section hints from the raw posting:
 
 async function generateTailoringDraft(
   client: OpenAI,
+  model: string,
   resume: Resume,
   signals: StructuredJobSignals,
   selectedBullets: ReturnType<typeof selectBulletsForRewrite>
@@ -466,7 +470,7 @@ Return only valid JSON with this shape:
 }`;
 
   const response = await client.chat.completions.create({
-    model: LLM_CONFIG.DEFAULTS.model,
+    model,
     messages: [{ role: "user", content: prompt }],
     temperature: LLM_CONFIG.DETERMINISTIC.temperature,
     response_format: { type: "json_object" },
@@ -503,7 +507,7 @@ ${candidateName}
 Return only the full cover letter text.`;
 
     const expandedResponse = await client.chat.completions.create({
-      model: LLM_CONFIG.DEFAULTS.model,
+      model,
       messages: [{ role: "user", content: expandPrompt }],
       temperature: LLM_CONFIG.DETERMINISTIC.temperature,
     });
@@ -517,6 +521,7 @@ Return only the full cover letter text.`;
   if (countGenericPhrases(coverLetter) >= 2) {
     coverLetter = await polishCoverLetterTone(
       client,
+      model,
       coverLetter,
       resume,
       signals,
@@ -554,17 +559,17 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
-    if (!apiKey) {
+    const llm = createLlmClient(req.headers.get("X-OpenAI-API-Key"));
+    if (!llm.ok) {
       return NextResponse.json(
         ErrorResponseSchema.parse({
-          error: "OpenAI API key is required. Add it in the dashboard or set OPENAI_API_KEY on the server.",
+          error: llm.error,
         }),
         { status: 401 }
       );
     }
 
-    const client = new OpenAI({ apiKey });
+    const { client, model } = llm;
     const body = await req.json();
     const parsedRequest = TailorRequestSchema.safeParse(body);
 
@@ -594,11 +599,11 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    const signals = await extractStructuredJobSignals(client, jobDescription, jobRequirements);
+    const signals = await extractStructuredJobSignals(client, model, jobDescription, jobRequirements);
     const parsedResume = parseResumeForTailoring(resume, signals);
     const bulletAnalysis = buildBulletAnalysis(parsedResume);
     const selectedBullets = selectBulletsForRewrite(parsedResume);
-    const tailoringDraft = await generateTailoringDraft(client, resume, signals, selectedBullets);
+    const tailoringDraft = await generateTailoringDraft(client, model, resume, signals, selectedBullets);
     const acceptedRewrites = acceptBulletRewrites(
       selectedBullets,
       Object.fromEntries(

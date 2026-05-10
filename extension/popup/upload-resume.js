@@ -2,7 +2,48 @@
 
 import { BACKEND_URL } from '../shared/config.js';
 
+const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 const statusEl = document.getElementById("status");
+
+function storageGet(areaName, keys) {
+  const area = browserAPI.storage[areaName];
+  try {
+    const result = area.get(keys);
+    if (result && typeof result.then === "function") {
+      return result;
+    }
+  } catch (err) {
+    console.warn(`Promise storage.${areaName}.get unavailable, using callback API:`, err);
+  }
+
+  return new Promise((resolve) => {
+    area.get(keys, (result) => {
+      resolve(result || {});
+    });
+  });
+}
+
+function sendRuntimeMessage(message) {
+  try {
+    const result = browserAPI.runtime.sendMessage(message);
+    if (result && typeof result.then === "function") {
+      return result;
+    }
+  } catch (err) {
+    return Promise.reject(err);
+  }
+
+  return new Promise((resolve, reject) => {
+    browserAPI.runtime.sendMessage(message, (resp) => {
+      const lastError = browserAPI.runtime.lastError;
+      if (lastError) {
+        reject(lastError);
+        return;
+      }
+      resolve(resp);
+    });
+  });
+}
 
 document.getElementById("resumeFile").addEventListener("change", async (e) => {
   const file = e.target.files[0];
@@ -10,7 +51,7 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
 
   statusEl.className = "status loading";
   statusEl.style.display = "block";
-    statusEl.textContent = "Uploading and parsing PDF...";
+  statusEl.textContent = "Uploading and parsing PDF...";
 
   try {
     if (!file.name.endsWith(".pdf") && file.type !== "application/pdf") {
@@ -22,18 +63,16 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     formData.append("file", file);
 
     // Get API key from settings
-    const apiKeySettings = await chrome.storage.sync.get(['openaiApiKey']);
+    const apiKeySettings = await storageGet("sync", ["openaiApiKey"]);
     const apiKey = apiKeySettings.openaiApiKey;
-
-    if (!apiKey) {
-      throw new Error("No OpenAI API key found. Save one in the extension popup or dashboard first.");
+    const headers = {};
+    if (apiKey) {
+      headers["X-OpenAI-API-Key"] = apiKey;
     }
 
     const response = await fetch(`${BACKEND_URL}/api/parse-resume`, {
       method: "POST",
-      headers: {
-        "X-OpenAI-API-Key": apiKey
-      },
+      headers,
       body: formData
     });
 
@@ -54,7 +93,7 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     }
 
     // Send parsed resume to background for caching
-    await chrome.runtime.sendMessage({
+    await sendRuntimeMessage({
       action: "UPLOAD_RESUME",
       resumeData,
       filename: file.name

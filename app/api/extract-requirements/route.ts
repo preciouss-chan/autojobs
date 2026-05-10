@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 import { checkRateLimit, RATE_LIMIT_PRESETS, getIdentifierFromRequest } from "@/lib/rate-limit";
+import { createLlmClient } from "@/app/lib/llm-client";
 import {
   ExtractRequirementsRequestSchema,
   JobRequirementsSchema,
   ErrorResponseSchema,
 } from "@/app/lib/schemas";
-import type { JobRequirements } from "@/app/lib/schemas";
 import { LLM_CONFIG } from "@/app/lib/llm-config";
 
 export const runtime = "nodejs";
@@ -33,12 +32,11 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
+    const llm = createLlmClient(req.headers.get("X-OpenAI-API-Key"));
+    if (!llm.ok) {
       return NextResponse.json(
         ErrorResponseSchema.parse({
-          error: "OpenAI API key is required. Please set it in extension settings or environment variable.",
+          error: llm.error,
         }),
         { status: 401 }
       );
@@ -48,9 +46,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     const { jobDescription } = ExtractRequirementsRequestSchema.parse(body);
 
 
-    const client = new OpenAI({
-      apiKey: apiKey,
-    });
+    const { client, model } = llm;
 
     const prompt = `You are an expert at analyzing job descriptions and extracting structured requirements.
 
@@ -82,7 +78,7 @@ Rules:
 - Be specific about domain and team focus from the job description context`;
 
     const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model,
       messages: [
         {
           role: "user",

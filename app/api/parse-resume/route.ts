@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 import { checkRateLimit, getIdentifierFromRequest, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
+import { createLlmClient } from "@/app/lib/llm-client";
 import { ResumeSchema, ErrorResponseSchema } from "@/app/lib/schemas";
 import { LLM_CONFIG } from "@/app/lib/llm-config";
 
@@ -27,22 +27,17 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    // Get API key from header or fallback to environment variable
-    const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
+    const llm = createLlmClient(req.headers.get("X-OpenAI-API-Key"));
+    if (!llm.ok) {
       return NextResponse.json(
         ErrorResponseSchema.parse({
-          error: "OpenAI API key is required. Add it in the dashboard or set OPENAI_API_KEY on the server.",
+          error: llm.error,
         }),
         { status: 401 }
       );
     }
 
-    // Initialize OpenAI client inside the function
-    const client = new OpenAI({
-      apiKey: apiKey,
-    });
+    const { client, model } = llm;
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
 
@@ -160,7 +155,7 @@ Extract all information accurately. If a field is not present, use an empty stri
 `;
 
     const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model,
       messages: [
         {
           role: "user",

@@ -17,39 +17,80 @@ const STORAGE_KEYS = {
   OPENAI_API_KEY: "openaiApiKey"
 };
 
-async function getStoredApiKey() {
-  return new Promise((resolve) => {
-    try {
-      browserAPI.storage.sync.get([STORAGE_KEYS.OPENAI_API_KEY], (result) => {
-        resolve(result?.[STORAGE_KEYS.OPENAI_API_KEY] || "");
-      });
-    } catch (err) {
-      console.error("Error getting API key:", err);
-      resolve("");
+function storageGet(areaName, keys) {
+  const area = browserAPI.storage[areaName];
+  try {
+    const result = area.get(keys);
+    if (result && typeof result.then === "function") {
+      return result;
     }
+  } catch (err) {
+    console.warn(`Promise storage.${areaName}.get unavailable, using callback API:`, err);
+  }
+
+  return new Promise((resolve) => {
+    area.get(keys, (result) => {
+      resolve(result || {});
+    });
   });
+}
+
+function storageSet(areaName, values) {
+  const area = browserAPI.storage[areaName];
+  try {
+    const result = area.set(values);
+    if (result && typeof result.then === "function") {
+      return result;
+    }
+  } catch (err) {
+    console.warn(`Promise storage.${areaName}.set unavailable, using callback API:`, err);
+  }
+
+  return new Promise((resolve) => {
+    area.set(values, resolve);
+  });
+}
+
+function storageRemove(areaName, keys) {
+  const area = browserAPI.storage[areaName];
+  try {
+    const result = area.remove(keys);
+    if (result && typeof result.then === "function") {
+      return result;
+    }
+  } catch (err) {
+    console.warn(`Promise storage.${areaName}.remove unavailable, using callback API:`, err);
+  }
+
+  return new Promise((resolve) => {
+    area.remove(keys, resolve);
+  });
+}
+
+async function getStoredApiKey() {
+  try {
+    const result = await storageGet("sync", [STORAGE_KEYS.OPENAI_API_KEY]);
+    return result?.[STORAGE_KEYS.OPENAI_API_KEY] || "";
+  } catch (err) {
+    console.error("Error getting API key:", err);
+    return "";
+  }
 }
 
 async function storeApiKey(apiKey) {
-  return new Promise((resolve) => {
-    try {
-      browserAPI.storage.sync.set({ [STORAGE_KEYS.OPENAI_API_KEY]: apiKey }, resolve);
-    } catch (err) {
-      console.error("Error storing API key:", err);
-      resolve();
-    }
-  });
+  try {
+    await storageSet("sync", { [STORAGE_KEYS.OPENAI_API_KEY]: apiKey });
+  } catch (err) {
+    console.error("Error storing API key:", err);
+  }
 }
 
 async function clearStoredApiKey() {
-  return new Promise((resolve) => {
-    try {
-      browserAPI.storage.sync.remove([STORAGE_KEYS.OPENAI_API_KEY], resolve);
-    } catch (err) {
-      console.error("Error clearing API key:", err);
-      resolve();
-    }
-  });
+  try {
+    await storageRemove("sync", [STORAGE_KEYS.OPENAI_API_KEY]);
+  } catch (err) {
+    console.error("Error clearing API key:", err);
+  }
 }
 
 function maskApiKey(value) {
@@ -298,8 +339,8 @@ async function updateAuthUI() {
     }
 
     apiKeyInput.value = apiKey;
-    apiKeyState.textContent = apiKey ? `Saved · ${maskApiKey(apiKey)}` : "No key saved";
-    saveApiKeyBtn.textContent = apiKey ? "Update key" : "Save key";
+    apiKeyState.textContent = apiKey ? `Saved · ${maskApiKey(apiKey)}` : "Local/no key";
+    saveApiKeyBtn.textContent = apiKey ? "Update key" : "Save optional key";
     clearApiKeyBtn.disabled = !apiKey;
   } catch (err) {
     console.error("Error updating auth UI:", err);
@@ -424,15 +465,12 @@ function sendRuntimeMessage(message) {
 
 // =============== CHECK FOR CACHED RESUME ON LOAD ===============
 async function checkCachedResume() {
-  return new Promise((resolve) => {
-    browserAPI.storage.local.get(["uploadedResume", "uploadedResumeFilename"], (result) => {
-      resolve({
-        hasResume: !!result.uploadedResume,
-        filename: result.uploadedResumeFilename || null,
-        name: result.uploadedResume?.name || null
-      });
-    });
-  });
+  const result = await storageGet("local", ["uploadedResume", "uploadedResumeFilename"]);
+  return {
+    hasResume: !!result.uploadedResume,
+    filename: result.uploadedResumeFilename || null,
+    name: result.uploadedResume?.name || null
+  };
 }
 
 // Display cached resume status when popup opens
@@ -471,7 +509,7 @@ document.getElementById("openChatbot").addEventListener("click", async () => {
     jobDescription = res?.result || "";
 
     if (jobDescription && jobDescription.length >= 50) {
-      browserAPI.storage.local.set({
+      storageSet("local", {
         lastJobDescription: jobDescription,
         lastJobDescriptionUrl: tab.url || "",
       });
@@ -481,7 +519,7 @@ document.getElementById("openChatbot").addEventListener("click", async () => {
   }
 
   if (!jobDescription || jobDescription.length < 50) {
-    const stored = await browserAPI.storage.local.get(['lastJobDescription', 'lastJobDescriptionUrl']);
+    const stored = await storageGet("local", ["lastJobDescription", "lastJobDescriptionUrl"]);
     if (stored.lastJobDescription && stored.lastJobDescriptionUrl === (tab.url || "")) {
       jobDescription = stored.lastJobDescription;
     }
@@ -495,26 +533,19 @@ document.getElementById("openChatbot").addEventListener("click", async () => {
 
 // =============== CLEAR CACHED RESUME ===============
 document.getElementById("clearResume").addEventListener("click", async () => {
-  browserAPI.storage.local.remove(["uploadedResume", "uploadedResumeFilename"], () => {
-    const statusEl = document.getElementById("resumeStatus");
-    const clearBtn = document.getElementById("clearResume");
-    statusEl.style.display = "none";
-    clearBtn.style.display = "none";
-    
-    // Reset file input
-    document.getElementById("resumeFile").value = "";
-  });
+  await storageRemove("local", ["uploadedResume", "uploadedResumeFilename"]);
+  const statusEl = document.getElementById("resumeStatus");
+  const clearBtn = document.getElementById("clearResume");
+  statusEl.style.display = "none";
+  clearBtn.style.display = "none";
+  
+  // Reset file input
+  document.getElementById("resumeFile").value = "";
 });
 
 // =============== GENERATE TAILORED RESUME ===============
 document.getElementById("generate").addEventListener("click", async () => {
   console.log("👉 Generate Resume clicked");
-
-  const apiKey = await getStoredApiKey();
-  if (!apiKey) {
-    alert("Save your OpenAI API key first.");
-    return;
-  }
 
   const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
 
@@ -531,7 +562,7 @@ document.getElementById("generate").addEventListener("click", async () => {
 
   // Store job description for chatbot
   if (jobDescription && jobDescription.length >= 50) {
-    browserAPI.storage.local.set({
+    storageSet("local", {
       lastJobDescription: jobDescription,
       lastJobDescriptionUrl: tab.url || "",
     });
@@ -708,8 +739,8 @@ document.getElementById("uploadResume").addEventListener("click", async () => {
 
   try {
     const resp = await sendRuntimeMessage({ action: "FORCE_UPLOAD", tabId: tab.id });
-    if (resp?.error) {
-      const errorMsg = String(resp.error || "Unknown error").substring(0, 200);
+    if (!resp || resp.ok === false || resp.error) {
+      const errorMsg = String(resp?.error || "Resume upload was not accepted by this page.").substring(0, 200);
       try {
         browserAPI.notifications.create({
           type: 'basic',
@@ -745,8 +776,8 @@ document.getElementById("uploadCoverLetter").addEventListener("click", async () 
 
   try {
     const resp = await sendRuntimeMessage({ action: "FORCE_UPLOAD_COVER", tabId: tab.id });
-    if (resp?.error) {
-      const errorMsg = String(resp.error || "Unknown error").substring(0, 200);
+    if (!resp || resp.ok === false || resp.error) {
+      const errorMsg = String(resp?.error || "Cover letter upload was not accepted by this page.").substring(0, 200);
       try {
         browserAPI.notifications.create({
           type: 'basic',
@@ -814,15 +845,14 @@ document.getElementById("resumeFile").addEventListener("change", async (e) => {
     formData.append("file", file);
 
     const apiKey = await getStoredApiKey();
-    if (!apiKey) {
-      throw new Error("Save your OpenAI API key first.");
+    const headers = {};
+    if (apiKey) {
+      headers["X-OpenAI-API-Key"] = apiKey;
     }
 
     const response = await fetchWithTimeout(`${BACKEND_URL}/api/parse-resume`, {
       method: "POST",
-      headers: {
-        "X-OpenAI-API-Key": apiKey
-      },
+      headers,
       body: formData
     }, API_TIMEOUTS.PARSE);
 

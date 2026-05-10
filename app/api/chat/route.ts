@@ -1,10 +1,45 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 import { checkRateLimit, RATE_LIMIT_PRESETS, getIdentifierFromRequest } from "@/lib/rate-limit";
+import { createLlmClient } from "@/app/lib/llm-client";
 import { ChatResponseSchema, ErrorResponseSchema } from "@/app/lib/schemas";
 import { LLM_CONFIG } from "@/app/lib/llm-config";
 
 export const runtime = "nodejs";
+
+type ChatResume = {
+  name?: string;
+  contact?: {
+    email?: string;
+  };
+  summary?: string;
+  education?: Array<{
+    degree?: string;
+    institution?: string;
+    graduation_year?: string;
+    gpa?: string;
+  }>;
+  experience?: Array<{
+    role?: string;
+    company?: string;
+    dates?: string;
+    bullets?: string[];
+  }>;
+  projects?: Array<{
+    name?: string;
+    date?: string;
+    bullets?: string[];
+  }>;
+  skills?: {
+    languages?: string[];
+    frameworks_libraries?: string[];
+    tools?: string[];
+  };
+};
+
+type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
@@ -28,23 +63,24 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    // Get API key from header or fallback to environment variable
-    const apiKey = req.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
+    const llm = createLlmClient(req.headers.get("X-OpenAI-API-Key"));
+    if (!llm.ok) {
       return NextResponse.json(
         ErrorResponseSchema.parse({
-          error: "OpenAI API key is required. Please set it in extension settings or environment variable.",
+          error: llm.error,
         }),
         { status: 401 }
       );
     }
 
-    const client = new OpenAI({
-      apiKey: apiKey,
-    });
+    const { client, model } = llm;
 
-    const { message, jobDescription, resume, chatHistory } = await req.json();
+    const { message, jobDescription, resume, chatHistory } = await req.json() as {
+      message?: unknown;
+      jobDescription?: string;
+      resume?: ChatResume;
+      chatHistory?: ChatMessage[];
+    };
 
     // Validate required message field
     if (!message || typeof message !== "string" || message.trim().length === 0) {
@@ -84,13 +120,13 @@ Name: ${candidateName}`;
       }
       if (resume.education && resume.education.length > 0) {
         systemPrompt += `\n\nEducation:`;
-        resume.education.forEach((edu: any) => {
+        resume.education.forEach((edu) => {
           systemPrompt += `\n- ${edu.degree || ""} from ${edu.institution || ""}${edu.graduation_year ? ` (graduating ${edu.graduation_year})` : ""}${edu.gpa ? `, GPA: ${edu.gpa}` : ""}`;
         });
       }
       if (resume.experience && resume.experience.length > 0) {
         systemPrompt += `\n\nMy Work Experience:`;
-        resume.experience.forEach((exp: any) => {
+        resume.experience.forEach((exp) => {
           systemPrompt += `\n\n${exp.role} at ${exp.company} (${exp.dates || ""})`;
           if (exp.bullets && exp.bullets.length > 0) {
             exp.bullets.forEach((bullet: string) => {
@@ -101,7 +137,7 @@ Name: ${candidateName}`;
       }
       if (resume.projects && resume.projects.length > 0) {
         systemPrompt += `\n\nMy Projects:`;
-        resume.projects.forEach((proj: any) => {
+        resume.projects.forEach((proj) => {
           systemPrompt += `\n\n${proj.name}${proj.date ? ` (${proj.date})` : ""}`;
           if (proj.bullets && proj.bullets.length > 0) {
             proj.bullets.forEach((bullet: string) => {
@@ -143,14 +179,19 @@ EXAMPLES OF GOOD ANSWERS:
 NEVER give generic answers. ALWAYS be specific with names, numbers, and details from my background.`;
 
     // Build messages array
-    const messages: any[] = [
+    const messages: ChatMessage[] = [
       { role: "system", content: systemPrompt }
     ];
 
     // Add chat history (last few messages for context)
-    if (chatHistory && chatHistory.length > 0) {
+    if (Array.isArray(chatHistory) && chatHistory.length > 0) {
       // Only add last 6 messages (3 exchanges) to keep context manageable
-      const recentHistory = chatHistory.slice(-6);
+      const recentHistory = chatHistory
+        .filter((item) => (
+          (item.role === "user" || item.role === "assistant") &&
+          typeof item.content === "string"
+        ))
+        .slice(-6);
       messages.push(...recentHistory);
     }
 
@@ -158,7 +199,7 @@ NEVER give generic answers. ALWAYS be specific with names, numbers, and details 
     messages.push({ role: "user", content: message });
 
     const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model,
       messages: messages,
       temperature: LLM_CONFIG.CONVERSATIONAL.temperature, // Use consistent temperature for conversational AI
       max_tokens: 600, // Increased for more detailed answers

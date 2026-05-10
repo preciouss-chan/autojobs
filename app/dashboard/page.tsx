@@ -63,8 +63,8 @@ export default function DashboardPage(): React.ReactElement {
       <AppShell>
         <PageHeader
           eyebrow="AutoJobs · Step 1 of 2"
-          title="Set your session key first."
-          description="This local-first setup keeps your OpenAI key in the current browser session so you can move into tailoring without extra account steps."
+          title="Choose your model setup."
+          description="Use this page only if you want to pass an OpenAI-compatible API key from the browser. Local Ollama-style models can run without a saved session key."
         />
         <SurfacePanel className="mt-6 flex min-h-52 items-center justify-center">
           <div className="flex flex-col items-center gap-4 text-center">
@@ -80,8 +80,8 @@ export default function DashboardPage(): React.ReactElement {
     <AppShell>
       <PageHeader
         eyebrow="AutoJobs · Step 1 of 2"
-        title="Save your session key, then head straight into tailoring."
-        description="For students and new grads, the quickest path starts here: add your OpenAI key once for this browser session, then move into the workspace to paste a role, extract signals, and tailor your resume."
+        title="Use a session key only when your model server needs one."
+        description="For local models, you can go straight to the workspace. For OpenAI or another hosted OpenAI-compatible endpoint, save the key once for this browser session."
         actions={[
           { href: "/", label: "Open workspace", tone: "secondary" },
         ]}
@@ -90,7 +90,7 @@ export default function DashboardPage(): React.ReactElement {
             <span className="chip">Local-first</span>
             <span className="chip">Session only</span>
             <span className="chip">
-              {hasSavedKey ? `Ready · ${maskApiKey(apiKey.trim())}` : "Setup needed"}
+              {hasSavedKey ? `Ready · ${maskApiKey(apiKey.trim())}` : "Optional"}
             </span>
           </>
         }
@@ -99,8 +99,8 @@ export default function DashboardPage(): React.ReactElement {
       <main className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.9fr)]">
         <SurfacePanel className="space-y-6">
           <SurfaceHeading
-            title="OpenAI API key"
-            description="Your key stays in sessionStorage for this browser session only. The workspace uses it through the app's server routes whenever you parse, extract requirements, or tailor a resume."
+            title="Optional API key"
+            description="Your key stays in sessionStorage for this browser session only. The workspace sends it to the app's server routes, but local Ollama-style setups do not need one."
             aside={
               <span className="chip">
                 {hasSavedKey ? `Saved · ${maskApiKey(apiKey.trim())}` : "Not saved yet"}
@@ -117,11 +117,11 @@ export default function DashboardPage(): React.ReactElement {
               type="password"
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
-              placeholder="sk-..."
+              placeholder="sk-... or leave empty for local"
               className="field-input"
             />
             <p className="section-copy">
-              Paste the key you want this browser session to use. Clear it any time if you want to swap keys or reset the local setup.
+              Paste the key you want this browser session to use, or leave this empty when the server is configured for a local model.
             </p>
           </div>
 
@@ -165,9 +165,9 @@ export default function DashboardPage(): React.ReactElement {
               <li className="flex gap-3">
                 <span className="chip h-fit">1</span>
                 <div>
-                  <p className="font-medium text-[color:var(--foreground)]">Save your key here</p>
+                  <p className="font-medium text-[color:var(--foreground)]">Pick local or hosted</p>
                   <p className="mt-1 leading-6">
-                    It stays in this browser session only, so you can work locally without extra account or billing steps.
+                    Leave the key empty for local Ollama, or save a key for OpenAI and compatible hosted services.
                   </p>
                 </div>
               </li>
@@ -199,8 +199,8 @@ export default function DashboardPage(): React.ReactElement {
             />
 
             <ul className="space-y-3 text-sm leading-6 text-[color:var(--foreground-soft)]">
-              <li>Billing, credits, and hosted sign-in are no longer part of this flow.</li>
-              <li>The dashboard and workspace share the same browser-session API key.</li>
+              <li>Billing, credits, and hosted sign-in are not required when using a local model.</li>
+              <li>The dashboard and workspace share the same optional browser-session API key.</li>
               <li>The fastest path is now setup here, then tailoring in the main workspace.</li>
             </ul>
           </SurfacePanel>

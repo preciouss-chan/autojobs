@@ -99,23 +99,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           console.log("📄 Using default resume");
         }
 
-        console.log("🔑 Using stored API key for tailor API...");
+        console.log("🔑 Reading optional stored API key for tailor API...");
         console.log("🌐 Backend URL:", BASE_URL);
         console.log("📋 Request URL will be:", `${BASE_URL}/api/tailor`);
         console.log("📄 Job description payload:", msg.jobDescription);
 
         const apiKey = await getStoredApiKey();
-        if (!apiKey) {
-          throw new Error("No OpenAI API key found. Save one in the extension or dashboard first.");
+        const headers = { "Content-Type": "application/json" };
+        if (apiKey) {
+          headers["X-OpenAI-API-Key"] = apiKey;
+          console.log("🔐 Sending stored API key to tailor API");
+        } else {
+          console.log("🔐 No extension API key saved; server will use local or environment config");
         }
-        console.log("🔐 Sending stored API key to tailor API");
 
         const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
           method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "X-OpenAI-API-Key": apiKey
-          },
+          headers,
           body: JSON.stringify({ 
             jobDescription: msg.jobDescription,
             resume: baseResume

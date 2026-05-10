@@ -365,9 +365,335 @@ function textToFile(text, filename = "cover_letter.txt", mime = "text/plain") {
   return new File([blob], filename, { type: mime });
 }
 
-function findUploadInput(fileType = "resume") {
+function getElementText(element) {
+  if (!element) return "";
+  return (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function isVisibleElement(element) {
+  if (!element) return false;
+  const style = window.getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+  return style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    style.opacity !== "0" &&
+    rect.width > 0 &&
+    rect.height > 0;
+}
+
+function collectElementContext(element) {
+  const parts = [];
+  const attrs = [
+    "id",
+    "name",
+    "class",
+    "accept",
+    "aria-label",
+    "aria-labelledby",
+    "placeholder",
+    "title",
+    "data-testid",
+    "data-test-id",
+    "data-test",
+    "data-qa",
+    "data-automation-id",
+    "data-field-name"
+  ];
+
+  for (const attr of attrs) {
+    const value = element.getAttribute?.(attr);
+    if (value) parts.push(value);
+  }
+
+  if (element.id) {
+    document.querySelectorAll(`label[for="${CSS.escape(element.id)}"]`).forEach((label) => {
+      parts.push(getElementText(label));
+    });
+  }
+
+  const wrappingLabel = element.closest?.("label");
+  if (wrappingLabel) {
+    parts.push(getElementText(wrappingLabel));
+  }
+
+  let current = element.parentElement;
+  for (let depth = 0; current && depth < 4; depth++) {
+    const controlCount = current.querySelectorAll?.("input, textarea, select, [contenteditable=true], [role=textbox]").length || 0;
+    const label = controlCount <= 1 ? current.querySelector?.("label") : null;
+    const legend = controlCount <= 1 ? current.querySelector?.("legend") : null;
+    const heading = controlCount <= 1 ? current.querySelector?.("h1, h2, h3, h4, h5, h6") : null;
+    const siblingBefore = current.previousElementSibling;
+    const siblingAfter = current.nextElementSibling;
+    const safeSiblings = [siblingBefore, siblingAfter].filter((item) => {
+      const siblingControlCount = item?.querySelectorAll?.("input, textarea, select, [contenteditable=true], [role=textbox]").length || 0;
+      return siblingControlCount === 0;
+    });
+
+    [label, legend, heading, ...safeSiblings].forEach((item) => {
+      const text = getElementText(item);
+      if (text && text.length < 500) parts.push(text);
+    });
+
+    const currentText = getElementText(current);
+    if (currentText && currentText.length < 900 && controlCount <= 1) {
+      parts.push(currentText);
+    }
+
+    current = current.parentElement;
+  }
+
+  return parts.join(" ").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function getFileExtension(file) {
+  const name = file?.name || "";
+  const dotIndex = name.lastIndexOf(".");
+  return dotIndex >= 0 ? name.slice(dotIndex).toLowerCase() : "";
+}
+
+function fileMatchesAccept(input, file) {
+  const accept = (input.getAttribute("accept") || "").trim().toLowerCase();
+  if (!accept) return true;
+  if (!file) return true;
+
+  const extension = getFileExtension(file);
+  const mime = (file.type || "").toLowerCase();
+  const tokens = accept
+    .split(",")
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  if (tokens.length === 0) return true;
+
+  return tokens.some((token) => {
+    if (token.startsWith(".")) {
+      return extension === token;
+    }
+    if (token.endsWith("/*")) {
+      return mime.startsWith(token.slice(0, -1));
+    }
+    if (token.includes("/")) {
+      return mime === token;
+    }
+    return token.includes(extension.replace(".", "")) || (mime && token.includes(mime));
+  });
+}
+
+function resolveFileForInput(input, file, fileType, options = {}) {
+  if (fileMatchesAccept(input, file)) {
+    return file;
+  }
+
+  if (fileType === "cover" && options.text) {
+    const textFile = options.textFile || textToFile(options.text, "cover_letter.txt", "text/plain");
+    if (fileMatchesAccept(input, textFile)) {
+      return textFile;
+    }
+  }
+
+  return null;
+}
+
+function canUploadCandidateToInput(input, fileType, file, options = {}) {
+  return !!resolveFileForInput(input, file, fileType, options);
+}
+
+function scoreUploadInput(input, fileType, file, options = {}) {
+  if (!input || input.type !== "file" || input.disabled) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const context = collectElementContext(input);
+  const acceptsCandidate = canUploadCandidateToInput(input, fileType, file, options);
+  let score = acceptsCandidate ? 20 : -220;
+
+  const hasResumeTerm = /\b(resume|résumé|cv|curriculum vitae)\b/.test(context);
+  const hasCoverTerm = /\bcover\s*letter\b|\bcoverletter\b|\bmotivation\s*letter\b|\bletter of motivation\b/.test(context);
+
+  if (fileType === "cover") {
+    if (hasCoverTerm) score += 95;
+    if (/\bcover\b/.test(context)) score += 30;
+    if (/\bletter\b/.test(context)) score += 25;
+    if (/\b(motivation|supporting document|additional document)\b/.test(context)) score += 20;
+    if (hasResumeTerm && !hasCoverTerm) score -= 130;
+  } else {
+    if (hasResumeTerm) score += 95;
+    if (/\b(cv)\b/.test(context)) score += 50;
+    if (/\b(document|attachment|upload|attach)\b/.test(context)) score += 18;
+    if (hasCoverTerm) score -= 130;
+  }
+
+  if (/\b(photo|avatar|profile picture|headshot|portfolio|transcript|certificate|license|work sample)\b/.test(context)) {
+    score -= 90;
+  }
+
+  if (isVisibleElement(input)) {
+    score += 10;
+  } else if (input.classList.contains("visually-hidden") || input.classList.contains("visuallyHidden")) {
+    score += 6;
+  }
+
+  const exactId = fileType === "cover" ? "cover_letter" : "resume";
+  if (input.id === exactId || input.name === exactId) {
+    score += 120;
+  }
+
+  return score;
+}
+
+function findBestScoredUploadInput(fileType, file, options = {}) {
+  const allInputs = Array.from(document.querySelectorAll("input[type=file]"));
+  if (allInputs.length === 0) return null;
+
+  const scored = allInputs
+    .map((input) => ({
+      input,
+      score: scoreUploadInput(input, fileType, file, options)
+    }))
+    .filter((item) => Number.isFinite(item.score))
+    .sort((left, right) => right.score - left.score);
+
+  const best = scored[0];
+  const threshold = fileType === "cover" ? 45 : 25;
+  if (best && best.score >= threshold) {
+    console.log(`✅ Scored ${fileType} upload input at ${best.score}`, best.input);
+    return best.input;
+  }
+
+  if (fileType === "resume" && allInputs.length === 1 && canUploadCandidateToInput(allInputs[0], fileType, file, options)) {
+    return allInputs[0];
+  }
+
+  return null;
+}
+
+function scoreCoverLetterTextTarget(element) {
+  if (!element || element.disabled || element.readOnly) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const context = collectElementContext(element);
+  let score = 0;
+
+  if (/\bcover\s*letter\b|\bcoverletter\b|\bmotivation\s*letter\b|\bletter of motivation\b/.test(context)) score += 95;
+  if (/\bmessage to (the )?(hiring manager|recruiter|employer)\b/.test(context)) score += 65;
+  if (/\bwhy (are )?you (interested|want)|why this role|why do you want\b/.test(context)) score += 45;
+  if (/\badditional (information|comments)|supporting statement|personal statement\b/.test(context)) score += 30;
+  if (/\bresume|résumé|cv|url|website|portfolio|linkedin|github|salary|phone|email\b/.test(context)) score -= 80;
+  if (isVisibleElement(element)) score += 12;
+
+  if (element.tagName === "TEXTAREA") score += 15;
+  if (element.isContentEditable || element.getAttribute("role") === "textbox") score += 10;
+
+  return score;
+}
+
+function findCoverLetterTextTarget() {
+  const selector = [
+    "textarea",
+    "input[type=text]",
+    "input:not([type])",
+    "[contenteditable=true]",
+    "[role=textbox]"
+  ].join(",");
+
+  const candidates = Array.from(document.querySelectorAll(selector))
+    .map((element) => ({
+      element,
+      score: scoreCoverLetterTextTarget(element)
+    }))
+    .filter((item) => item.score >= 45)
+    .sort((left, right) => right.score - left.score);
+
+  return candidates[0]?.element || null;
+}
+
+function callReactChangeHandlers(element) {
+  const reactKey = Object.keys(element).find((key) =>
+    key.startsWith("__reactFiber") ||
+    key.startsWith("__reactInternalInstance") ||
+    key.startsWith("__reactProps")
+  );
+
+  if (!reactKey) return;
+
+  try {
+    let fiber = element[reactKey];
+    for (let depth = 0; fiber && depth < 30; depth++) {
+      const props = fiber.memoizedProps || fiber.pendingProps || fiber.stateNode?.props;
+      if (props?.onChange) {
+        props.onChange({
+          target: element,
+          currentTarget: element,
+          type: "change",
+          bubbles: true,
+          nativeEvent: new Event("change", { bubbles: true })
+        });
+      }
+      if (props?.onInput) {
+        props.onInput({
+          target: element,
+          currentTarget: element,
+          type: "input",
+          bubbles: true,
+          nativeEvent: new Event("input", { bubbles: true })
+        });
+      }
+      fiber = fiber.return;
+    }
+  } catch (err) {
+    console.warn("Could not call React text handlers:", err);
+  }
+}
+
+function fillCoverLetterText(text) {
+  if (!text || typeof text !== "string") return false;
+
+  const target = findCoverLetterTextTarget();
+  if (!target) return false;
+
+  try {
+    target.focus?.();
+
+    if (target.isContentEditable || target.getAttribute("role") === "textbox") {
+      target.textContent = text;
+    } else {
+      const prototype = target.tagName === "TEXTAREA"
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+      const valueSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+
+      if (valueSetter) {
+        valueSetter.call(target, text);
+      } else {
+        target.value = text;
+      }
+    }
+
+    callReactChangeHandlers(target);
+    try {
+      target.dispatchEvent(new InputEvent("input", { bubbles: true, cancelable: true, data: text }));
+    } catch {
+      target.dispatchEvent(new Event("input", { bubbles: true, cancelable: true }));
+    }
+    target.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
+    target.dispatchEvent(new Event("blur", { bubbles: true, cancelable: true }));
+    console.log("✅ Filled cover letter text field", target);
+    return true;
+  } catch (err) {
+    console.error("Cover letter text fill failed:", err);
+    return false;
+  }
+}
+
+function findUploadInput(fileType = "resume", file = null, options = {}) {
   console.log(`🔍 findUploadInput() called for fileType: ${fileType}`);
   console.log(`📍 Current URL: ${window.location.href}`);
+
+  const scoredInput = findBestScoredUploadInput(fileType, file, options);
+  if (scoredInput) {
+    return scoredInput;
+  }
   
   // Check if we're on Ashby (used by Patreon, etc.)
   const isAshby = document.querySelector('.ashby-application-form-autofill-uploader') ||
@@ -843,9 +1169,25 @@ function findUploadInput(fileType = "resume") {
    return null;
  }
 
-async function injectFileIntoPage(file, fileType = "resume") {
+async function injectFileIntoPage(file, fileType = "resume", options = {}) {
   // DON'T click buttons that trigger file pickers - find the input directly instead
   // Workday/Greenhouse have file inputs that may be hidden, but we can find them without clicking
+
+  const uploadToInput = async (input) => {
+    const compatibleFile = resolveFileForInput(input, file, fileType, options);
+    if (!compatibleFile) {
+      console.warn(`⚠️ ${fileType} upload input does not accept available file formats`, input);
+      if (fileType === "cover" && options.text) {
+        return fillCoverLetterText(options.text);
+      }
+      return false;
+    }
+    const uploaded = await injectFileIntoInput(input, compatibleFile, fileType);
+    if (!uploaded && fileType === "cover" && options.text) {
+      return fillCoverLetterText(options.text);
+    }
+    return uploaded;
+  };
   
   // For LinkedIn Easy Apply: Find file input in the modal with retry logic
   if (window.location.hostname.includes('linkedin.com')) {
@@ -872,7 +1214,7 @@ async function injectFileIntoPage(file, fileType = "resume") {
           const fileInput = container.querySelector('input[type=file]');
           if (fileInput) {
             console.log("📘 Found LinkedIn file input in modal");
-            return await injectFileIntoInput(fileInput, file, fileType);
+            return await uploadToInput(fileInput);
           }
         }
       }
@@ -884,7 +1226,7 @@ async function injectFileIntoPage(file, fileType = "resume") {
         const isInModal = input.closest('.artdeco-modal, .jobs-easy-apply-modal');
         if (isInModal) {
           console.log("📘 Found LinkedIn file input in artdeco modal");
-          return await injectFileIntoInput(input, file, fileType);
+          return await uploadToInput(input);
         }
       }
     }
@@ -906,7 +1248,7 @@ async function injectFileIntoPage(file, fileType = "resume") {
     if (container) {
       const fileInput = container.querySelector("input[type=file]");
       if (fileInput) {
-        return await injectFileIntoInput(fileInput, file, fileType);
+        return await uploadToInput(fileInput);
       }
     }
   }
@@ -916,7 +1258,7 @@ async function injectFileIntoPage(file, fileType = "resume") {
     const exactId = fileType === "cover" ? "cover_letter" : "resume";
     const exactInput = document.getElementById(exactId);
     if (exactInput && exactInput.type === 'file') {
-      return await injectFileIntoInput(exactInput, file, fileType);
+      return await uploadToInput(exactInput);
     }
   }
   
@@ -925,22 +1267,28 @@ async function injectFileIntoPage(file, fileType = "resume") {
   if (resumeUploadContainer) {
     const fileInput = resumeUploadContainer.querySelector("input[type=file]");
     if (fileInput) {
-      return await injectFileIntoInput(fileInput, file, fileType);
+      return await uploadToInput(fileInput);
     }
   }
   
    // Use findUploadInput as fallback
-   const input = findUploadInput(fileType);
+   const input = findUploadInput(fileType, file, options);
    if (input) {
      console.log(`✅ Found ${fileType} input via findUploadInput()`, input);
-     return await injectFileIntoInput(input, file, fileType);
+     const uploaded = await uploadToInput(input);
+     if (uploaded) return true;
    }
    
    // Last resort: Try to find ANY file input
    const anyInput = document.querySelector("input[type=file]");
    if (anyInput) {
      console.log(`⚠️ Using ANY file input as last resort for ${fileType}`, anyInput);
-     return await injectFileIntoInput(anyInput, file, fileType);
+     const uploaded = await uploadToInput(anyInput);
+     if (uploaded) return true;
+   }
+
+   if (fileType === "cover" && options.text && fillCoverLetterText(options.text)) {
+     return true;
    }
 
    console.error(`❌ FAILED: No file input found for ${fileType}`);
@@ -2018,7 +2366,9 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         const file = base64ToFile(cached.base64, cached.filename);
         const ok = await injectFileIntoPage(file, "resume");
-        return { ok };
+        return ok
+          ? { ok: true }
+          : { ok: false, error: "No compatible resume upload field was found on this page." };
       } catch (err) {
         console.error("Resume upload error:", err);
         return { ok: false, error: err.message };
@@ -2049,21 +2399,33 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           bytes[i] = binary.charCodeAt(i);
         }
         const coverLetterText = new TextDecoder().decode(bytes);
-        
-        // Convert text to PDF via background script (has better permissions for localhost)
-        const convertResponse = await sendRuntimeMessage({
-          action: "CONVERT_COVER_LETTER_TO_PDF",
-          text: coverLetterText
-        });
 
-        if (!convertResponse || !convertResponse.ok) {
-          throw new Error(convertResponse?.error || "Failed to convert cover letter to PDF");
+        const textFile = textToFile(coverLetterText, "cover_letter.txt", "text/plain");
+        let file = textFile;
+
+        try {
+          // Convert text to PDF via background script (has better permissions for localhost)
+          const convertResponse = await sendRuntimeMessage({
+            action: "CONVERT_COVER_LETTER_TO_PDF",
+            text: coverLetterText
+          });
+
+          if (convertResponse?.ok && convertResponse.base64) {
+            file = base64ToFile(convertResponse.base64, "cover_letter.pdf", "application/pdf");
+          } else {
+            console.warn("Cover letter PDF conversion failed, using text fallback:", convertResponse?.error);
+          }
+        } catch (conversionErr) {
+          console.warn("Cover letter PDF conversion failed, using text fallback:", conversionErr);
         }
 
-        // Create PDF file from base64
-        const file = base64ToFile(convertResponse.base64, "cover_letter.pdf", "application/pdf");
-        const ok = await injectFileIntoPage(file, "cover");
-        return { ok };
+        const ok = await injectFileIntoPage(file, "cover", {
+          text: coverLetterText,
+          textFile
+        });
+        return ok
+          ? { ok: true }
+          : { ok: false, error: "No compatible cover letter upload field or text box was found on this page." };
       } catch (err) {
         console.error("Cover letter upload error:", err);
         return { ok: false, error: err.message };
@@ -2080,4 +2442,3 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 console.log("✨ Content script ready — manual upload only.");
-

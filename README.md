@@ -6,7 +6,7 @@ AutoJobs is now a local-first open-source resume tailoring app.
 
 - parse resume PDFs
 - extract job requirements
-- tailor resumes and cover letters with OpenAI
+- tailor resumes and cover letters with OpenAI or a local OpenAI-compatible model server
 - export tailored resumes as PDF
 - run a local browser extension against your local app server
 
@@ -16,7 +16,7 @@ AutoJobs is now a local-first open-source resume tailoring app.
 
 - Node.js 18+
 - npm 9+
-- an OpenAI API key
+- either an OpenAI API key or a local OpenAI-compatible server such as Ollama
 
 ### Install
 
@@ -37,14 +37,33 @@ Open:
 
 ## API key flow
 
+### Local model flow
+
+AutoJobs can use a local Ollama model through Ollama's OpenAI-compatible API.
+
+```bash
+ollama pull gemma4:e4b
+ollama serve
+```
+
+Add this to `.env.local`, then restart `npm run dev`:
+
+```bash
+LLM_PROVIDER=local
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=gemma4:e4b
+```
+
+You can swap `LLM_MODEL` for another local model name, such as `gemma4:e2b`, `gemma4:26b`, or any Ollama model that works well on your machine.
+
 ### Web app
 
-Use `/dashboard` to enter your OpenAI API key for the current browser session.
+Use `/dashboard` only when your provider needs a browser-session API key. Local Ollama does not require one.
 
 ### Extension
 
 The extension defaults to `http://localhost:3000`.
-Set your OpenAI API key from the extension popup, then use the popup against your local app server.
+For local Ollama, leave the extension API key empty. For OpenAI or another hosted OpenAI-compatible endpoint, set the API key from the extension popup.
 
 ## Available commands
 

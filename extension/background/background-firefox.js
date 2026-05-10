@@ -17,17 +17,14 @@ const STORAGE_KEYS = {
 
 console.log("🔥 Background script loaded (Firefox).");
 
-function getStoredApiKey() {
-  return new Promise((resolve) => {
-    try {
-      browserAPI.storage.sync.get([STORAGE_KEYS.OPENAI_API_KEY], (result) => {
-        resolve(result?.[STORAGE_KEYS.OPENAI_API_KEY] || null);
-      });
-    } catch (err) {
-      console.error("Error getting stored API key:", err);
-      resolve(null);
-    }
-  });
+async function getStoredApiKey() {
+  try {
+    const result = await browserAPI.storage.sync.get([STORAGE_KEYS.OPENAI_API_KEY]);
+    return result?.[STORAGE_KEYS.OPENAI_API_KEY] || null;
+  } catch (err) {
+    console.error("Error getting stored API key:", err);
+    return null;
+  }
 }
 
 // Unicode-safe base64 encoding
@@ -58,21 +55,21 @@ async function handleMakeResume(msg) {
       console.log("📄 Using default resume");
     }
 
-    console.log("🔑 Using stored API key for tailor API...");
+    console.log("🔑 Reading optional stored API key for tailor API...");
     console.log("🌐 Backend URL:", BASE_URL);
 
     const apiKey = await getStoredApiKey();
-    if (!apiKey) {
-      throw new Error("No OpenAI API key found. Save one in the extension or dashboard first.");
+    const headers = { "Content-Type": "application/json" };
+    if (apiKey) {
+      headers["X-OpenAI-API-Key"] = apiKey;
+      console.log("🔐 Sending stored API key to tailor API");
+    } else {
+      console.log("🔐 No extension API key saved; server will use local or environment config");
     }
-    console.log("🔐 Sending stored API key to tailor API");
 
     const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "X-OpenAI-API-Key": apiKey
-      },
+      headers,
       body: JSON.stringify({ 
         jobDescription: msg.jobDescription,
         resume: baseResume
@@ -116,7 +113,17 @@ async function handleMakeResume(msg) {
     const pdfRes = await fetch(`${BASE_URL}/api/export/pdf`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(mergedResume)
+      body: JSON.stringify({
+        ...mergedResume,
+        tailor_metadata: {
+          skills_to_add: edits.skills_to_add || {
+            languages: [],
+            frameworks_libraries: [],
+            tools: [],
+            professional_skills: [],
+          },
+        },
+      })
     });
 
     if (!pdfRes.ok) {

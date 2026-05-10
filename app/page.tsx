@@ -172,12 +172,6 @@ export default function TailorPage(): React.ReactElement {
       return;
     }
 
-    if (!apiKey.trim()) {
-      addToast("error", "Add your OpenAI API key in the dashboard before extracting requirements.");
-      setExtracting(false);
-      return;
-    }
-
     try {
       const response = await fetch("/api/extract-requirements", {
         method: "POST",
@@ -211,12 +205,6 @@ export default function TailorPage(): React.ReactElement {
   ): Promise<void> {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    if (!apiKey.trim()) {
-      addToast("error", "Add your OpenAI API key in the dashboard before uploading a resume.");
-      event.target.value = "";
-      return;
-    }
 
     setUploadingResume(true);
 
@@ -255,12 +243,6 @@ export default function TailorPage(): React.ReactElement {
     const jobText = extractJobText(job);
     if (!jobText) {
       addToast("error", "Paste a job description before tailoring your resume.");
-      setLoading(false);
-      return;
-    }
-
-    if (!apiKey.trim()) {
-      addToast("error", "Add your OpenAI API key in the dashboard before tailoring your resume.");
       setLoading(false);
       return;
     }
@@ -355,10 +337,10 @@ export default function TailorPage(): React.ReactElement {
       ? "status-note status-note-success"
       : "status-note status-note-accent";
   const setupMessage = !apiKeyLoaded
-    ? "Checking this browser session for a saved API key."
+    ? "Checking this browser session for an optional saved API key."
     : hasApiKey
-      ? "Dashboard session key loaded. You can upload, extract, and tailor from here."
-      : "Save your API key in the dashboard before using parsing or tailoring.";
+      ? "Dashboard session key loaded. The server will use it unless a local LLM is configured."
+      : "No session key saved. This works with a local LLM server, or with OPENAI_API_KEY on the server.";
 
   return (
     <AppShell>
@@ -369,7 +351,7 @@ export default function TailorPage(): React.ReactElement {
         actions={[
           {
             href: "/dashboard",
-            label: hasApiKey ? "Dashboard setup" : "Set up dashboard first",
+            label: hasApiKey ? "Dashboard setup" : "Optional key setup",
             tone: hasApiKey ? "secondary" : "subtle",
           },
         ]}
@@ -412,7 +394,7 @@ export default function TailorPage(): React.ReactElement {
                       type="file"
                       accept=".pdf"
                       onChange={handleResumeUpload}
-                      disabled={uploadingResume || !hasApiKey}
+                      disabled={uploadingResume}
                       aria-label="Upload PDF resume file"
                       aria-busy={uploadingResume}
                       aria-describedby="resume-upload-hint"
@@ -460,7 +442,7 @@ export default function TailorPage(): React.ReactElement {
                     <button
                       type="button"
                       onClick={handleExtractRequirements}
-                      disabled={extracting || !hasJobText || !hasApiKey}
+                      disabled={extracting || !hasJobText}
                       aria-label={extracting ? "Extracting job requirements" : "Extract job requirements from description"}
                       aria-busy={extracting}
                       className="action-secondary"
@@ -471,7 +453,7 @@ export default function TailorPage(): React.ReactElement {
                     <button
                       type="button"
                       onClick={handleTailor}
-                      disabled={loading || !hasJobText || !hasApiKey}
+                      disabled={loading || !hasJobText}
                       aria-label={loading ? "Tailoring your resume" : "Tailor resume to job description"}
                       aria-busy={loading}
                       className="action-primary"
@@ -505,7 +487,7 @@ export default function TailorPage(): React.ReactElement {
                   <span className="chip h-fit">1</span>
                   <div>
                     <p className="font-medium text-[color:var(--foreground)]">Start from the dashboard</p>
-                    <p className="mt-1">Save your session key once for the browser session.</p>
+                    <p className="mt-1">Save a key only if you are using OpenAI instead of a local model.</p>
                   </div>
                 </li>
                 <li className="flex gap-3">

@@ -1,0 +1,1251 @@
+import type {
+  AtsAnalysis,
+  ChangedBullet,
+  MissingKeyword,
+  Resume,
+  ResumeBulletAnalysis,
+  StructuredJobSignals,
+  TailorResponse,
+} from "@/app/lib/schemas";
+
+type ResumeSection = "experience" | "projects";
+
+type ResumeBulletRecord = {
+  id: string;
+  section: ResumeSection;
+  sectionLabel: string;
+  index: number;
+  originalText: string;
+  normalizedText: string;
+  detectedKeywords: string[];
+  domainCategory: string;
+  hasMetrics: boolean;
+  hasAchievement: boolean;
+  sectionWeight: number;
+  recencyWeight: number;
+  score: number;
+  reasons: string[];
+};
+
+type SelectedBullet = ResumeBulletRecord & {
+  matchedSignals: string[];
+};
+
+type AcceptedRewrite = {
+  id: string;
+  revised: string;
+  reason: string;
+  matchedSignals: string[];
+};
+
+type RewriteMap = Record<string, { revised: string; reason?: string; matched_signals?: string[] }>;
+
+const SECTION_WEIGHTS: Record<ResumeSection, number> = {
+  experience: 1.2,
+  projects: 1,
+};
+
+const COMMON_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "in",
+  "into",
+  "is",
+  "of",
+  "on",
+  "or",
+  "that",
+  "the",
+  "to",
+  "with",
+  "using",
+  "use",
+  "used",
+  "you",
+  "your",
+  "our",
+  "their",
+  "team",
+  "teams",
+  "work",
+  "role",
+  "roles",
+  "experience",
+  "responsible",
+  "responsibility",
+]);
+
+const TECH_ALIASES: Record<string, string> = {
+  js: "javascript",
+  ts: "typescript",
+  node: "nodejs",
+  "node.js": "nodejs",
+  "react.js": "react",
+  "next.js": "nextjs",
+  nextjs: "nextjs",
+  postgres: "postgresql",
+  postgresql: "postgresql",
+  aws: "amazon web services",
+  ai: "artificial intelligence",
+  ml: "machine learning",
+  llm: "large language models",
+  apis: "api",
+  k8s: "kubernetes",
+  automl: "automl",
+  "auto ml": "automl",
+  nosql: "nosql",
+  "ci/cd": "ci/cd",
+};
+
+const KNOWN_TECH_TERMS = uniq([
+  ...Object.keys(TECH_ALIASES),
+  ...Object.values(TECH_ALIASES),
+  "python",
+  "typescript",
+  "javascript",
+  "java",
+  "sql",
+  "c",
+  "c++",
+  "c#",
+  "kotlin",
+  "react",
+  "react-native",
+  "next.js",
+  "nextjs",
+  "flask",
+  "django",
+  "django rest",
+  "bootstrap",
+  "matplotlib",
+  "sklearn",
+  "scikit-learn",
+  "pandas",
+  "git",
+  "unity",
+  "android studio",
+  "openai",
+  "gpt-3.5",
+  "gpt-4",
+  "aws",
+  "amazon web services",
+  "docker",
+  "kubernetes",
+  "mesos",
+  "spark",
+  "kafka",
+  "flink",
+  "automl",
+  "nosql",
+  "ci/cd",
+  "microservices",
+  "cloud computing",
+  "langchain",
+  "rag",
+  "rag architectures",
+  "vector database",
+  "vector databases",
+  "anthropic",
+  "google",
+  "llms",
+  "large language models",
+  "machine learning",
+  "data engineering",
+  "distributed systems",
+  "backend development",
+  "colyseus",
+  "vr",
+  "rest api",
+]);
+
+const CANONICAL_SKILL_LABELS: Record<string, string> = {
+  javascript: "JavaScript",
+  typescript: "TypeScript",
+  python: "Python",
+  java: "Java",
+  sql: "SQL",
+  c: "C",
+  "c++": "C++",
+  "c#": "C#",
+  kotlin: "Kotlin",
+  react: "React",
+  "react-native": "React Native",
+  "next.js": "Next.js",
+  nextjs: "Next.js",
+  flask: "Flask",
+  django: "Django",
+  "django rest": "Django REST",
+  matplotlib: "Matplotlib",
+  sklearn: "scikit-learn",
+  "scikit-learn": "scikit-learn",
+  pandas: "pandas",
+  git: "Git",
+  unity: "Unity",
+  "android studio": "Android Studio",
+  openai: "OpenAI",
+  "gpt-3.5": "GPT-3.5",
+  "gpt-4": "GPT-4",
+  aws: "AWS",
+  "amazon web services": "AWS",
+  docker: "Docker",
+  kubernetes: "Kubernetes",
+  mesos: "Mesos",
+  spark: "Spark",
+  kafka: "Kafka",
+  flink: "Flink",
+  automl: "AutoML",
+  nosql: "NoSQL",
+  "ci/cd": "CI/CD",
+  microservices: "Microservices",
+  "cloud computing": "Cloud Computing",
+  langchain: "LangChain",
+  rag: "RAG",
+  "rag architectures": "RAG architectures",
+  "vector database": "vector databases",
+  "vector databases": "vector databases",
+  anthropic: "Anthropic",
+  google: "Google",
+  llms: "LLMs",
+  "large language models": "LLMs",
+  "machine learning": "Machine Learning",
+  "data engineering": "Data Engineering",
+  "distributed systems": "Distributed Systems",
+  "backend development": "Backend Development",
+  api: "APIs",
+  "rest api": "REST APIs",
+};
+
+const SKILL_NOISE_PATTERNS = [
+  /\b(currently|recently|soon|passionate|comfortable|eager|interest|understanding|learning|learn|graduate|graduated|completing|mentorship|coursework|academic|project experience|real-world|at scale|related field|nice-to-have|plus|preferred)\b/i,
+  /\bph\.?d\b|\bms\b|\bmaster'?s\b|\bbachelor'?s\b|\bdegree\b/i,
+  /\bwhat you'?ll do\b|\brequirements\b|\bbenefits\b|\brole summary\b/i,
+  /\bcomputer science\b|\belectrical engineering\b|\bundergraduate\b|\bresearch\b/i,
+  /\bai frameworks\b|\bcutting-edge\b|\bexceptional\b|\bupper division\b/i,
+];
+
+const GENERIC_TECH_UMBRELLA_PATTERNS = [
+  /\bcloud platforms?\b/i,
+  /\bai frameworks?\b/i,
+  /\bai models?\b/i,
+  /\bcontainer technologies?\b/i,
+  /\bcontainer management systems?\b/i,
+  /\bfunctional ai models?\b/i,
+];
+
+const QUALIFIER_LED_PATTERNS = [
+  /^exposure to\b/i,
+  /^experience with\b/i,
+  /^experienced with\b/i,
+  /^familiar(?:ity)? with\b/i,
+  /^knowledge of\b/i,
+  /^proficien(?:cy|t) in\b/i,
+  /^skilled in\b/i,
+  /^interest in\b/i,
+];
+
+const PROFESSIONAL_SKILL_KEYWORDS: Record<string, string[]> = {
+  communication: ["communication", "communicate", "present", "presentation", "stakeholder"],
+  teamwork: ["teamwork", "team player", "collaboration", "collaborate", "cross-functional"],
+  leadership: ["leadership", "lead", "ownership", "mentor", "mentorship"],
+  "problem-solving": ["problem solving", "problem-solving", "solve problems", "analytical thinking"],
+  adaptability: ["adaptability", "adapt", "fast-paced", "ambiguity"],
+};
+
+const PROFESSIONAL_SKILL_PATTERNS: Record<string, RegExp[]> = {
+  teamwork: [/\bteam(work)?\b/i, /cross-functional/i, /collaborat/i, /worked with/i],
+  communication: [/communicat/i, /present/i, /feedback/i, /stakeholder/i],
+  leadership: [/led\b/i, /mentored/i, /owned/i, /coordinated/i],
+  "problem-solving": [/diagnos/i, /resolved/i, /troubleshoot/i, /improv/i, /optimized/i],
+  adaptability: [/fast-paced/i, /quickly/i, /time-sensitive/i, /high-stakes/i],
+  "customer support": [/support(ed|ing)?/i, /customer/i, /user feedback/i],
+};
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+export function normalizeTerm(value: string): string {
+  const normalized = normalizeWhitespace(value)
+    .toLowerCase()
+    .replace(/[()]/g, "")
+    .replace(/[^a-z0-9+#./\-\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return TECH_ALIASES[normalized] || normalized;
+}
+
+function tokenize(value: string): string[] {
+  return normalizeTerm(value)
+    .split(/\s+/)
+    .filter((token) => token.length > 1 && !COMMON_STOPWORDS.has(token));
+}
+
+function titleCaseLabel(value: string): string {
+  return value
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function canonicalSkillLabel(value: string): string {
+  const normalized = normalizeTerm(value);
+  if (CANONICAL_SKILL_LABELS[normalized]) {
+    return CANONICAL_SKILL_LABELS[normalized];
+  }
+
+  const cleaned = normalizeWhitespace(value)
+    .replace(/^[^A-Za-z0-9]+/, "")
+    .replace(/[^A-Za-z0-9+#./\-\s]+$/, "")
+    .trim();
+
+  if (!cleaned) {
+    return titleCaseLabel(value);
+  }
+
+  if (/[A-Z]{2,}|[a-z][A-Z]|[+#./-]/.test(cleaned)) {
+    return cleaned;
+  }
+
+  return titleCaseLabel(cleaned);
+}
+
+function isLikelyNoiseSkill(value: string): boolean {
+  const normalized = normalizeTerm(value);
+  if (!normalized) {
+    return true;
+  }
+
+  if (SKILL_NOISE_PATTERNS.some((pattern) => pattern.test(value))) {
+    return true;
+  }
+
+  const tokens = tokenize(value);
+  if (tokens.length === 0 || tokens.length > 4) {
+    return true;
+  }
+
+  return false;
+}
+
+function extractSkillCandidates(value: string): string[] {
+  const normalized = normalizeTerm(value);
+  if (!normalized) {
+    return [];
+  }
+
+  const candidates = new Set<string>();
+  if (KNOWN_TECH_TERMS.includes(normalized)) {
+    candidates.add(canonicalSkillLabel(normalized));
+  }
+
+  KNOWN_TECH_TERMS.forEach((term) => {
+    const normalizedTerm = normalizeTerm(term);
+    if (!normalizedTerm || normalizedTerm.length < 2) {
+      return;
+    }
+
+    const matchesWholePhrase = normalized === normalizedTerm;
+    const matchesWithinPhrase = normalized.includes(normalizedTerm)
+      && /[a-z0-9+#./-]/.test(normalizedTerm)
+      && normalizedTerm.length >= 3;
+
+    if (matchesWholePhrase || matchesWithinPhrase) {
+      candidates.add(canonicalSkillLabel(normalizedTerm));
+    }
+  });
+
+  if (candidates.size > 0) {
+    return Array.from(candidates);
+  }
+
+  if (isLikelyNoiseSkill(value)) {
+    return [];
+  }
+
+  if (GENERIC_TECH_UMBRELLA_PATTERNS.some((pattern) => pattern.test(value))) {
+    return [];
+  }
+
+  if (QUALIFIER_LED_PATTERNS.some((pattern) => pattern.test(value))) {
+    return [];
+  }
+
+  const technicalSignalPattern = /\b(api|database|databases|backend|frontend|cloud|pipeline|pipelines|microservices|container|containers|kubernetes|mesos|automl|llm|llms|rag|modeling|models|machine learning|data engineering|distributed systems|security|analytics|sql|nosql)\b/i;
+
+  if (technicalSignalPattern.test(value)) {
+    return [canonicalSkillLabel(value)];
+  }
+
+  const cleaned = canonicalSkillLabel(value);
+  const tokenCount = tokenize(cleaned).length;
+  const looksLikeStandaloneTech = tokenCount === 1
+    && (/[A-Z]{2,}|[a-z][A-Z]|[0-9+#./-]/.test(cleaned) || cleaned.length <= 15);
+
+  if (looksLikeStandaloneTech) {
+    return [cleaned];
+  }
+
+  return [];
+}
+
+function extractProfessionalSkillCandidates(signals: StructuredJobSignals): string[] {
+  const sourceTerms = [
+    ...signals.required_skills,
+    ...signals.preferred_skills,
+    ...signals.minimum_qualification_keywords,
+    ...signals.preferred_qualification_keywords,
+    ...signals.responsibilities,
+  ];
+
+  const candidates = new Set<string>();
+
+  sourceTerms.forEach((term) => {
+    const normalized = normalizeTerm(term);
+    if (!normalized || KNOWN_TECH_TERMS.includes(normalized)) {
+      return;
+    }
+
+    Object.entries(PROFESSIONAL_SKILL_KEYWORDS).forEach(([skill, keywords]) => {
+      if (keywords.some((keyword) => normalized.includes(keyword))) {
+        candidates.add(titleCaseLabel(skill));
+      }
+    });
+  });
+
+  return Array.from(candidates);
+}
+
+function extractMetricTokens(text: string): string[] {
+  return uniq(text.match(/\b\d[\d.,]*(?:%|x|\+)?\b/g) ?? []);
+}
+
+function hasMetrics(text: string): boolean {
+  return extractMetricTokens(text).length > 0;
+}
+
+function hasAchievementLanguage(text: string): boolean {
+  return /\b(increased|reduced|improved|launched|delivered|generated|optimized|scaled|automated|boosted|saved|grew|accelerated|led|built|developed|designed|implemented)\b/i.test(text);
+}
+
+function estimateRecencyWeight(dates: string): number {
+  if (!dates.trim()) {
+    return 0.5;
+  }
+
+  const currentYear = new Date().getFullYear();
+  if (/present|current/i.test(dates)) {
+    return 1;
+  }
+
+  const years = dates.match(/\b(20\d{2}|19\d{2})\b/g)?.map((value) => Number(value)) ?? [];
+  const latestYear = years.length > 0 ? Math.max(...years) : null;
+
+  if (!latestYear) {
+    return 0.55;
+  }
+
+  const delta = currentYear - latestYear;
+  if (delta <= 1) {
+    return 0.95;
+  }
+  if (delta <= 3) {
+    return 0.8;
+  }
+  if (delta <= 5) {
+    return 0.65;
+  }
+  return 0.45;
+}
+
+function collectSignalTerms(signals: StructuredJobSignals): string[] {
+  return uniq([
+    signals.company_name,
+    ...signals.required_skills,
+    ...signals.preferred_skills,
+    ...signals.minimum_qualification_keywords,
+    ...signals.preferred_qualification_keywords,
+    ...signals.tools_technologies,
+    ...signals.responsibilities,
+    ...signals.domain_keywords,
+    ...signals.seniority_signals,
+    signals.title,
+    signals.team_focus,
+  ]);
+}
+
+function collectPriorityKeywords(signals: StructuredJobSignals): string[] {
+  return uniq([
+    signals.title,
+    ...signals.required_skills,
+    ...signals.minimum_qualification_keywords,
+    ...signals.tools_technologies,
+    ...signals.preferred_skills.slice(0, 4),
+    ...signals.preferred_qualification_keywords.slice(0, 4),
+  ]).filter((term) => normalizeTerm(term).length > 1);
+}
+
+function phraseMatches(text: string, phrases: string[]): string[] {
+  const normalizedText = normalizeTerm(text);
+  return uniq(
+    phrases.filter((phrase) => {
+      const normalizedPhrase = normalizeTerm(phrase);
+      return normalizedPhrase.length > 1 && normalizedText.includes(normalizedPhrase);
+    })
+  );
+}
+
+function tokenOverlapScore(text: string, phrases: string[]): number {
+  const textTokens = new Set(tokenize(text));
+  const phraseTokens = uniq(phrases.flatMap((phrase) => tokenize(phrase)));
+
+  if (textTokens.size === 0 || phraseTokens.length === 0) {
+    return 0;
+  }
+
+  let overlap = 0;
+  for (const token of phraseTokens) {
+    if (textTokens.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  return overlap / phraseTokens.length;
+}
+
+function detectDomainCategory(text: string, signals: StructuredJobSignals): string {
+  const matches = phraseMatches(text, signals.domain_keywords);
+  if (matches.length > 0) {
+    return matches[0];
+  }
+
+  const toolMatch = phraseMatches(text, signals.tools_technologies);
+  if (toolMatch.length > 0) {
+    return toolMatch[0];
+  }
+
+  return signals.team_focus || "general";
+}
+
+function deriveDetectedKeywords(text: string, signals: StructuredJobSignals): string[] {
+  const exactMatches = phraseMatches(text, collectSignalTerms(signals));
+  const tokenMatches = collectSignalTerms(signals).filter((term) => {
+    const termTokens = tokenize(term);
+    if (termTokens.length === 0) {
+      return false;
+    }
+
+    const textTokens = new Set(tokenize(text));
+    return termTokens.some((token) => textTokens.has(token));
+  });
+
+  return uniq([...exactMatches, ...tokenMatches]).slice(0, 8);
+}
+
+function buildBulletId(section: ResumeSection, label: string, index: number): string {
+  return `${section}:${label}:${index}`;
+}
+
+function scoreBullet(text: string, signals: StructuredJobSignals, section: ResumeSection, dates: string): {
+  score: number;
+  reasons: string[];
+  matchedSignals: string[];
+} {
+  const matchedSignals = deriveDetectedKeywords(text, signals);
+  const requiredMatches = phraseMatches(text, signals.required_skills);
+  const toolMatches = phraseMatches(text, signals.tools_technologies);
+  const responsibilityMatches = phraseMatches(text, signals.responsibilities);
+  const semanticScore = tokenOverlapScore(text, collectSignalTerms(signals));
+  const recencyWeight = estimateRecencyWeight(dates);
+  const sectionWeight = SECTION_WEIGHTS[section];
+
+  let score = requiredMatches.length * 3;
+  score += toolMatches.length * 2;
+  score += responsibilityMatches.length * 1.5;
+  score += semanticScore * 4;
+  score += sectionWeight;
+  score += recencyWeight;
+
+  const reasons: string[] = [];
+  if (requiredMatches.length > 0) {
+    reasons.push(`matches required skills: ${requiredMatches.join(", ")}`);
+  }
+  if (toolMatches.length > 0) {
+    reasons.push(`aligns with tools: ${toolMatches.join(", ")}`);
+  }
+  if (responsibilityMatches.length > 0) {
+    reasons.push(`supports responsibilities: ${responsibilityMatches.join(", ")}`);
+  }
+  if (semanticScore >= 0.2) {
+    reasons.push("strong overall relevance to the job signals");
+  }
+  if (recencyWeight >= 0.8) {
+    reasons.push("comes from recent experience");
+  }
+
+  return {
+    score: Number(score.toFixed(2)),
+    reasons,
+    matchedSignals,
+  };
+}
+
+export function parseResumeForTailoring(
+  resume: Resume,
+  signals: StructuredJobSignals
+): ResumeBulletRecord[] {
+  const records: ResumeBulletRecord[] = [];
+
+  for (const exp of resume.experience) {
+    exp.bullets.forEach((bullet, index) => {
+      const scored = scoreBullet(bullet, signals, "experience", exp.dates);
+      records.push({
+        id: buildBulletId("experience", exp.company, index),
+        section: "experience",
+        sectionLabel: exp.company,
+        index,
+        originalText: bullet,
+        normalizedText: normalizeTerm(bullet),
+        detectedKeywords: scored.matchedSignals,
+        domainCategory: detectDomainCategory(bullet, signals),
+        hasMetrics: hasMetrics(bullet),
+        hasAchievement: hasAchievementLanguage(bullet),
+        sectionWeight: SECTION_WEIGHTS.experience,
+        recencyWeight: estimateRecencyWeight(exp.dates),
+        score: scored.score,
+        reasons: scored.reasons,
+      });
+    });
+  }
+
+  for (const project of resume.projects) {
+    project.bullets.forEach((bullet, index) => {
+      const scored = scoreBullet(bullet, signals, "projects", project.date);
+      records.push({
+        id: buildBulletId("projects", project.name, index),
+        section: "projects",
+        sectionLabel: project.name,
+        index,
+        originalText: bullet,
+        normalizedText: normalizeTerm(bullet),
+        detectedKeywords: scored.matchedSignals,
+        domainCategory: detectDomainCategory(bullet, signals),
+        hasMetrics: hasMetrics(bullet),
+        hasAchievement: hasAchievementLanguage(bullet),
+        sectionWeight: SECTION_WEIGHTS.projects,
+        recencyWeight: estimateRecencyWeight(project.date),
+        score: scored.score,
+        reasons: scored.reasons,
+      });
+    });
+  }
+
+  return records.sort((left, right) => right.score - left.score);
+}
+
+export function buildBulletAnalysis(records: ResumeBulletRecord[]): ResumeBulletAnalysis[] {
+  const topThreshold = records.length > 0 ? Math.max(records[0].score * 0.45, 2.6) : 2.6;
+
+  return records.map((record, index) => ({
+    id: record.id,
+    section: record.section,
+    section_label: record.sectionLabel,
+    index: record.index,
+    original_text: record.originalText,
+    detected_keywords: record.detectedKeywords,
+    domain_category: record.domainCategory,
+    has_metrics: record.hasMetrics,
+    has_achievement: record.hasAchievement,
+    score: record.score,
+    decision: index < 6 && record.score >= topThreshold && record.detectedKeywords.length > 0 ? "rewrite" : "keep",
+    reasons: record.reasons,
+  }));
+}
+
+export function selectBulletsForRewrite(records: ResumeBulletRecord[]): SelectedBullet[] {
+  const analysis = buildBulletAnalysis(records);
+
+  return analysis
+    .filter((item) => item.decision === "rewrite")
+    .map((item) => {
+      const record = records.find((candidate) => candidate.id === item.id);
+      if (!record) {
+        return null;
+      }
+
+      return {
+        ...record,
+        matchedSignals: item.detected_keywords,
+      };
+    })
+    .filter((value): value is SelectedBullet => value !== null);
+}
+
+function collectResumeEvidenceTerms(resume: Resume): Set<string> {
+  const terms = new Set<string>();
+  const addTokens = (value: string): void => {
+    tokenize(value).forEach((token) => terms.add(token));
+    const normalized = normalizeTerm(value);
+    if (normalized) {
+      terms.add(normalized);
+    }
+  };
+
+  if (resume.summary) {
+    addTokens(resume.summary);
+  }
+
+  resume.skills.languages.forEach(addTokens);
+  resume.skills.frameworks_libraries.forEach(addTokens);
+  resume.skills.tools.forEach(addTokens);
+  resume.skills.professional_skills.forEach(addTokens);
+
+  resume.experience.forEach((exp) => {
+    addTokens(exp.role);
+    addTokens(exp.company);
+    exp.bullets.forEach(addTokens);
+  });
+
+  resume.projects.forEach((project) => {
+    addTokens(project.name);
+    project.technologies.forEach(addTokens);
+    project.bullets.forEach(addTokens);
+  });
+
+  return terms;
+}
+
+function collectSignalTokenSet(signals: StructuredJobSignals): Set<string> {
+  return new Set(collectSignalTerms(signals).flatMap((term) => tokenize(term)));
+}
+
+function containsUnsupportedSignalTokens(
+  original: string,
+  revised: string,
+  signalTokens: Set<string>
+): boolean {
+  const originalTokens = new Set(tokenize(original));
+  const revisedTokens = tokenize(revised);
+
+  const newlyAdded = revisedTokens.filter((token) => !originalTokens.has(token));
+  return newlyAdded.some((token) => signalTokens.has(token));
+}
+
+function changesMetrics(original: string, revised: string): boolean {
+  const originalMetrics = new Set(extractMetricTokens(original));
+  const revisedMetrics = new Set(extractMetricTokens(revised));
+
+  if (originalMetrics.size === 0) {
+    return revisedMetrics.size > 0;
+  }
+
+  for (const metric of revisedMetrics) {
+    if (!originalMetrics.has(metric)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasAdequateContentOverlap(original: string, revised: string): boolean {
+  const originalTokens = new Set(tokenize(original));
+  const revisedTokens = new Set(tokenize(revised));
+
+  if (originalTokens.size === 0 || revisedTokens.size === 0) {
+    return false;
+  }
+
+  let overlap = 0;
+  for (const token of originalTokens) {
+    if (revisedTokens.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  return overlap / originalTokens.size >= 0.45;
+}
+
+export function acceptBulletRewrites(
+  selectedBullets: SelectedBullet[],
+  rewriteMap: RewriteMap,
+  signals: StructuredJobSignals
+): AcceptedRewrite[] {
+  const accepted: AcceptedRewrite[] = [];
+  const signalTokens = collectSignalTokenSet(signals);
+
+  for (const bullet of selectedBullets) {
+    const rewrite = rewriteMap[bullet.id];
+    if (!rewrite?.revised) {
+      continue;
+    }
+
+    const revised = normalizeWhitespace(rewrite.revised);
+    if (!revised || revised === normalizeWhitespace(bullet.originalText)) {
+      continue;
+    }
+
+    if (containsUnsupportedSignalTokens(bullet.originalText, revised, signalTokens)) {
+      continue;
+    }
+
+    if (changesMetrics(bullet.originalText, revised)) {
+      continue;
+    }
+
+    if (!hasAdequateContentOverlap(bullet.originalText, revised)) {
+      continue;
+    }
+
+    accepted.push({
+      id: bullet.id,
+      revised,
+      reason: rewrite.reason || bullet.reasons[0] || "Improved clarity and keyword alignment.",
+      matchedSignals: rewrite.matched_signals ?? bullet.matchedSignals,
+    });
+  }
+
+  return accepted;
+}
+
+export function inferSupportedSkillsToAdd(
+  resume: Resume,
+  signals: StructuredJobSignals
+): TailorResponse["skills_to_add"] {
+  const existingSkills = new Set(
+    [
+      ...resume.skills.languages,
+      ...resume.skills.frameworks_libraries,
+      ...resume.skills.tools,
+      ...resume.skills.professional_skills,
+    ].map((skill) => normalizeTerm(skill))
+  );
+
+  const result: TailorResponse["skills_to_add"] = {
+    languages: [],
+    frameworks_libraries: [],
+    tools: [],
+    professional_skills: [],
+  };
+
+  const languageTerms = new Set(["javascript", "typescript", "python", "java", "sql", "go", "rust", "ruby", "php", "swift", "kotlin", "c", "c++", "c#"]);
+  const frameworkTerms = new Set([
+    "react",
+    "react-native",
+    "next.js",
+    "nextjs",
+    "flask",
+    "django",
+    "django rest",
+    "bootstrap",
+    "matplotlib",
+    "scikit-learn",
+    "sklearn",
+    "pandas",
+    "unity",
+    "langchain",
+  ]);
+
+  const maybeAdd = (skill: string): void => {
+    const normalized = normalizeTerm(skill);
+    if (!normalized || existingSkills.has(normalized)) {
+      return;
+    }
+
+    if (languageTerms.has(normalized)) {
+      result.languages.push(canonicalSkillLabel(skill));
+    } else if (frameworkTerms.has(normalized)) {
+      result.frameworks_libraries.push(canonicalSkillLabel(skill));
+    } else {
+      result.tools.push(canonicalSkillLabel(skill));
+    }
+    existingSkills.add(normalized);
+  };
+
+  [
+    ...signals.required_skills,
+    ...signals.minimum_qualification_keywords,
+    ...signals.tools_technologies,
+    ...signals.preferred_skills,
+    ...signals.preferred_qualification_keywords,
+  ].flatMap(extractSkillCandidates).forEach(maybeAdd);
+
+  extractProfessionalSkillCandidates(signals).forEach((skill) => {
+    const normalized = normalizeTerm(skill);
+    if (!normalized || existingSkills.has(normalized)) {
+      return;
+    }
+
+    result.professional_skills.push(skill);
+    existingSkills.add(normalized);
+  });
+
+  return {
+    languages: uniq(result.languages),
+    frameworks_libraries: uniq(result.frameworks_libraries),
+    tools: uniq(result.tools),
+    professional_skills: uniq(result.professional_skills),
+  };
+}
+
+export function findMissingKeywords(
+  resume: Resume,
+  signals: StructuredJobSignals
+): MissingKeyword[] {
+  void resume;
+  void signals;
+  return [];
+}
+
+export function buildBulletEditMaps(
+  resume: Resume,
+  acceptedRewrites: AcceptedRewrite[]
+): {
+  experienceEdits: TailorResponse["experience_edits"];
+  projectEdits: TailorResponse["project_edits"];
+} {
+  const experienceEdits: TailorResponse["experience_edits"] = {};
+  const projectEdits: TailorResponse["project_edits"] = {};
+
+  const grouped = new Map<string, AcceptedRewrite[]>();
+  for (const rewrite of acceptedRewrites) {
+    const [section, label] = rewrite.id.split(":");
+    const key = `${section}:${label}`;
+    const list = grouped.get(key) ?? [];
+    list.push(rewrite);
+    grouped.set(key, list);
+  }
+
+  for (const [groupKey, rewrites] of grouped.entries()) {
+    const [section, label] = groupKey.split(":");
+    if (section === "experience") {
+      const entry = resume.experience.find((item) => item.company === label);
+      if (!entry) {
+        continue;
+      }
+
+      const bullets = [...entry.bullets];
+      rewrites.forEach((rewrite) => {
+        const index = Number(rewrite.id.split(":").pop());
+        if (!Number.isNaN(index) && bullets[index]) {
+          bullets[index] = rewrite.revised;
+        }
+      });
+      experienceEdits[label] = bullets;
+      continue;
+    }
+
+    const project = resume.projects.find((item) => item.name === label);
+    if (!project) {
+      continue;
+    }
+
+    const bullets = [...project.bullets];
+    rewrites.forEach((rewrite) => {
+      const index = Number(rewrite.id.split(":").pop());
+      if (!Number.isNaN(index) && bullets[index]) {
+        bullets[index] = rewrite.revised;
+      }
+    });
+    projectEdits[label] = bullets;
+  }
+
+  return {
+    experienceEdits,
+    projectEdits,
+  };
+}
+
+export function buildChangedBullets(
+  selectedBullets: SelectedBullet[],
+  acceptedRewrites: AcceptedRewrite[]
+): ChangedBullet[] {
+  const selectedById = new Map(selectedBullets.map((item) => [item.id, item]));
+
+  return acceptedRewrites.map((rewrite) => {
+    const original = selectedById.get(rewrite.id);
+    return {
+      id: rewrite.id,
+      section: original?.section ?? "experience",
+      section_label: original?.sectionLabel ?? "",
+      index: original?.index ?? 0,
+      original: original?.originalText ?? "",
+      revised: rewrite.revised,
+      matched_signals: rewrite.matchedSignals,
+      reason: rewrite.reason,
+    };
+  });
+}
+
+export function applyResponseToResume(resume: Resume, response: TailorResponse): Resume {
+  const nextResume: Resume = structuredClone(resume);
+
+  if (response.updated_summary.trim()) {
+    nextResume.summary = response.updated_summary.trim();
+  }
+
+  for (const [company, bullets] of Object.entries(response.experience_edits)) {
+    const entry = nextResume.experience.find((item) => item.company === company);
+    if (entry && bullets.length === entry.bullets.length) {
+      entry.bullets = [...bullets];
+    }
+  }
+
+  for (const [projectName, bullets] of Object.entries(response.project_edits)) {
+    const project = nextResume.projects.find((item) => item.name === projectName);
+    if (project && bullets.length === project.bullets.length) {
+      project.bullets = [...bullets];
+    }
+  }
+
+  const mergeSkillList = (target: string[], additions: string[]): string[] => {
+    const seen = new Set(target.map((item) => normalizeTerm(item)));
+    const merged = [...target];
+    additions.forEach((item) => {
+      const normalized = normalizeTerm(item);
+      if (normalized && !seen.has(normalized)) {
+        seen.add(normalized);
+        merged.push(item);
+      }
+    });
+    return merged;
+  };
+
+  nextResume.skills.languages = mergeSkillList(
+    nextResume.skills.languages,
+    response.skills_to_add.languages
+  );
+  nextResume.skills.frameworks_libraries = mergeSkillList(
+    nextResume.skills.frameworks_libraries,
+    response.skills_to_add.frameworks_libraries
+  );
+  nextResume.skills.tools = mergeSkillList(nextResume.skills.tools, response.skills_to_add.tools);
+  nextResume.skills.professional_skills = mergeSkillList(
+    nextResume.skills.professional_skills,
+    response.skills_to_add.professional_skills
+  );
+
+  return nextResume;
+}
+
+export function formatResumeAsText(resume: Resume): string {
+  const lines: string[] = [];
+
+  lines.push(resume.name);
+  lines.push([
+    resume.contact.email,
+    resume.contact.phone,
+    resume.contact.linkedin,
+    resume.contact.github,
+  ].filter(Boolean).join(" | "));
+  lines.push("");
+
+  if (resume.summary.trim()) {
+    lines.push("SUMMARY");
+    lines.push(resume.summary.trim());
+    lines.push("");
+  }
+
+  lines.push("SKILLS");
+  if (resume.skills.languages.length > 0) {
+    lines.push(`Languages: ${resume.skills.languages.join(", ")}`);
+  }
+  if (resume.skills.frameworks_libraries.length > 0) {
+    lines.push(`Frameworks/Libraries: ${resume.skills.frameworks_libraries.join(", ")}`);
+  }
+  if (resume.skills.tools.length > 0) {
+    lines.push(`Technologies: ${resume.skills.tools.join(", ")}`);
+  }
+  if (resume.skills.professional_skills.length > 0) {
+    lines.push(`Professional Skills: ${resume.skills.professional_skills.join(", ")}`);
+  }
+  lines.push("");
+
+  if (resume.experience.length > 0) {
+    lines.push("EXPERIENCE");
+    resume.experience.forEach((item) => {
+      lines.push(`${item.role} | ${item.company}${item.dates ? ` | ${item.dates}` : ""}`);
+      item.bullets.forEach((bullet) => lines.push(`- ${bullet}`));
+      lines.push("");
+    });
+  }
+
+  if (resume.projects.length > 0) {
+    lines.push("PROJECTS");
+    resume.projects.forEach((item) => {
+      lines.push(`${item.name}${item.date ? ` | ${item.date}` : ""}`);
+      item.bullets.forEach((bullet) => lines.push(`- ${bullet}`));
+      lines.push("");
+    });
+  }
+
+  if (resume.education.length > 0) {
+    lines.push("EDUCATION");
+    resume.education.forEach((item) => {
+      const detailParts = [item.degree, item.institution, item.graduation_year].filter(Boolean);
+      lines.push(detailParts.join(" | "));
+      if (item.gpa) {
+        lines.push(`GPA: ${item.gpa}`);
+      }
+      lines.push("");
+    });
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function extractSectionText(resume: Resume): {
+  summary: string;
+  skills: string;
+  experience: string;
+  projects: string;
+} {
+  return {
+    summary: resume.summary || "",
+    skills: [
+      ...resume.skills.languages,
+      ...resume.skills.frameworks_libraries,
+      ...resume.skills.tools,
+      ...resume.skills.professional_skills,
+    ].join(" "),
+    experience: resume.experience.flatMap((item) => [item.role, item.company, ...item.bullets]).join(" "),
+    projects: resume.projects.flatMap((item) => [item.name, ...item.bullets]).join(" "),
+  };
+}
+
+function detectFormattingWarnings(resumeText: string): string[] {
+  const warnings: string[] = [];
+  if (/[•	]/.test(resumeText)) {
+    warnings.push("Avoid non-standard bullets or tab-based spacing in ATS exports.");
+  }
+  if (/[❌✔⚡🎯]/.test(resumeText)) {
+    warnings.push("Remove icons or decorative symbols that ATS parsers may skip.");
+  }
+  if (/<table|\|\s+\|/i.test(resumeText)) {
+    warnings.push("Avoid table-like formatting; keep content in plain text sections.");
+  }
+  return warnings;
+}
+
+export function analyzeAtsOptimization(
+  resume: Resume,
+  signals: StructuredJobSignals,
+  missingKeywords: MissingKeyword[]
+): AtsAnalysis {
+  const sections = extractSectionText(resume);
+  const priorityKeywords = collectPriorityKeywords(signals);
+  const matchedKeywords = priorityKeywords.filter((term) =>
+    [sections.summary, sections.skills, sections.experience, sections.projects]
+      .some((sectionText) => phraseMatches(sectionText, [term]).length > 0)
+  );
+
+  const sectionCoverage = {
+    summary: phraseMatches(sections.summary, priorityKeywords),
+    skills: phraseMatches(sections.skills, priorityKeywords),
+    experience: phraseMatches(sections.experience, priorityKeywords),
+    projects: phraseMatches(sections.projects, priorityKeywords),
+  };
+
+  const normalizedTitle = normalizeTerm(signals.title);
+  const roleTerms = resume.experience.map((item) => item.role).join(" ");
+  const titleAlignment = !normalizedTitle
+    ? "partial"
+    : phraseMatches(roleTerms, [signals.title]).length > 0
+      ? "strong"
+      : tokenOverlapScore(roleTerms, [signals.title]) >= 0.4
+        ? "partial"
+        : "weak";
+
+  let score = 35;
+  score += Math.round((matchedKeywords.length / Math.max(priorityKeywords.length, 1)) * 35);
+  score += Math.min(sectionCoverage.summary.length, 3) * 5;
+  score += Math.min(sectionCoverage.skills.length, 4) * 3;
+  score += Math.min(sectionCoverage.experience.length, 5) * 3;
+  score += titleAlignment === "strong" ? 10 : titleAlignment === "partial" ? 5 : 0;
+  score -= Math.min(missingKeywords.length, 6) * 2;
+  score = Math.max(0, Math.min(100, score));
+
+  const formattingWarnings = detectFormattingWarnings(formatResumeAsText(resume));
+  const optimizationTips: string[] = [];
+
+  if (titleAlignment !== "strong" && signals.title) {
+    optimizationTips.push(`Align your summary and recent role descriptions more clearly to the target title "${signals.title}" when truthful.`);
+  }
+  if (sectionCoverage.summary.length < Math.min(2, priorityKeywords.length)) {
+    optimizationTips.push("Use the summary to reflect the target role and 2-3 of the strongest supported hard skills naturally.");
+  }
+  if (sectionCoverage.skills.length < Math.min(3, priorityKeywords.length)) {
+    optimizationTips.push("Surface proven technical keywords in the skills section so ATS can match them quickly.");
+  }
+  if (sectionCoverage.experience.length < Math.min(4, priorityKeywords.length)) {
+    optimizationTips.push("Place important keywords inside accomplishment bullets, not only in the skills section.");
+  }
+  if (missingKeywords.some((item) => item.category === "required_skill" || item.category === "tool")) {
+    optimizationTips.push("Keep unsupported keywords out of the resume body and address them only if you can add truthful evidence later.");
+  }
+  if (formattingWarnings.length === 0) {
+    optimizationTips.push("Resume output remains plain-text and ATS-friendly: simple headings, standard bullets, and no complex layout artifacts.");
+  }
+
+  return {
+    score,
+    target_job_title: signals.title,
+    title_alignment: titleAlignment,
+    matched_keywords: matchedKeywords,
+    keyword_gaps: uniq(missingKeywords.map((item) => item.keyword)),
+    section_coverage: sectionCoverage,
+    formatting_warnings: formattingWarnings,
+    optimization_tips: optimizationTips.slice(0, 6),
+  };
+}
+
+export function buildImprovementNotes(response: {
+  changedBullets: ChangedBullet[];
+  missingKeywords: MissingKeyword[];
+  skillsToAdd: TailorResponse["skills_to_add"];
+  updatedSummary: string;
+  atsAnalysis?: AtsAnalysis;
+}): string[] {
+  const notes: string[] = [];
+
+  if (response.updatedSummary.trim()) {
+    notes.push("Refined the summary to better reflect the target role and strongest supported qualifications.");
+  }
+  if (response.changedBullets.length > 0) {
+    notes.push(`Rewrote ${response.changedBullets.length} high-relevance bullets while keeping the original facts and metrics intact.`);
+  }
+
+  const surfacedSkillsCount =
+    response.skillsToAdd.languages.length +
+    response.skillsToAdd.frameworks_libraries.length +
+    response.skillsToAdd.tools.length +
+    response.skillsToAdd.professional_skills.length;
+  if (surfacedSkillsCount > 0) {
+    notes.push(`Surfaced ${surfacedSkillsCount} existing capabilities in the skills section where the resume already supported them.`);
+  }
+
+  if (response.missingKeywords.length > 0) {
+    notes.push("Separated unsupported requirements into explicit gaps instead of injecting unverified keywords into the resume.");
+  }
+  if (response.atsAnalysis) {
+    notes.push(`ATS alignment score: ${response.atsAnalysis.score}/100 with ${response.atsAnalysis.matched_keywords.length} priority keywords matched naturally across the resume.`);
+  }
+
+  if (notes.length === 0) {
+    notes.push("Kept the resume largely unchanged because the strongest content was already aligned and truthful.");
+  }
+
+  return notes;
+}

@@ -1,0 +1,71 @@
+{
+  "name": "Jordan Rivera",
+  "contact": {
+    "phone": "555-010-0142",
+    "email": "jordan.rivera@example.com",
+    "linkedin": "https://www.linkedin.com/in/jordan-rivera-example/",
+    "github": "https://github.com/jordan-rivera-example"
+  },
+  "summary": "Software engineer focused on building practical full-stack tools, automation workflows, and user-facing applications.",
+  "projects": [
+    {
+      "name": "Resume Tailoring Workspace",
+      "date": "2026",
+      "link": "https://github.com/example/resume-workspace",
+      "technologies": ["Next.js", "React", "TypeScript", "OpenAI API"],
+      "bullets": [
+        "Built a resume tailoring workflow that parses structured resume data and adapts content to job descriptions.",
+        "Implemented PDF export and cover letter generation for application-ready documents.",
+        "Added browser-extension integration for caching and uploading generated files into application pages."
+      ]
+    },
+    {
+      "name": "Budget Automation Tool",
+      "date": "2025",
+      "link": "https://github.com/example/budget-tool",
+      "technologies": ["Node.js", "PostgreSQL", "React"],
+      "bullets": [
+        "Created transaction parsing and categorization workflows for recurring personal finance tasks.",
+        "Designed a dashboard for monthly spending summaries and category-level review.",
+        "Added basic rules and review states to reduce manual cleanup."
+      ]
+    },
+    {
+      "name": "Application Helper",
+      "date": "2025",
+      "link": "https://github.com/example/application-helper",
+      "technologies": ["TypeScript", "Next.js", "Tailwind CSS"],
+      "bullets": [
+        "Developed a lightweight app for drafting application responses from saved resume context.",
+        "Built reusable UI components for reviewing generated content before export.",
+        "Improved repeated application workflows with simple local-first storage."
+      ]
+    }
+  ],
+  "skills": {
+    "languages": ["TypeScript", "JavaScript", "Python", "SQL"],
+    "frameworks_libraries": ["React", "Next.js", "Tailwind CSS", "Node.js"],
+    "tools": ["Git", "PostgreSQL", "Prisma", "Playwright", "OpenAI API"],
+    "professional_skills": ["Automation", "Debugging", "API integration", "Technical writing"]
+  },
+  "education": [
+    {
+      "degree": "Bachelor of Science in Computer Science",
+      "institution": "Example University",
+      "graduation_year": "2027",
+      "gpa": ""
+    }
+  ],
+  "experience": [
+    {
+      "company": "Example Studio",
+      "role": "Software Engineering Intern",
+      "dates": "May 2025 - Aug 2025",
+      "bullets": [
+        "Built internal tools with React and TypeScript to streamline repeated support workflows.",
+        "Integrated backend APIs and improved form validation for user-facing dashboards.",
+        "Debugged production issues by tracing browser, API, and database behavior across the stack."
+      ]
+    }
+  ]
+}

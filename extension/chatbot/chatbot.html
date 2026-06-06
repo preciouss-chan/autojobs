@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>AutoJobs Application Helper</title>
+    <link rel="stylesheet" href="chatbot.css">
+  </head>
+  <body class="chatbot-page">
+    <div class="chatbot-shell">
+      <header class="chatbot-header">
+        <div class="header-copy-block">
+          <p class="eyebrow">AutoJobs extension</p>
+          <h1 class="page-title">Application helper</h1>
+          <p class="page-copy">
+            Use the current job context and your resume to draft calm, practical answers for application questions.
+          </p>
+        </div>
+      </header>
+
+      <main class="chat-container">
+        <div id="contextInfo" class="context-info" style="display: none;">
+          <p class="context-label">Context loaded</p>
+          <p id="contextText" class="context-text"></p>
+        </div>
+
+        <div class="suggestions">
+          <button type="button" class="suggestion-chip" data-question="Why do you want to join this company?">Why this company?</button>
+          <button type="button" class="suggestion-chip" data-question="What are you looking for in this role?">What do you want in this role?</button>
+          <button type="button" class="suggestion-chip" data-question="Tell us about yourself">Tell us about yourself</button>
+          <button type="button" class="suggestion-chip" data-question="Why are you interested in this position?">Why this position?</button>
+          <button type="button" class="suggestion-chip" data-question="What makes you a good fit for this role?">Why are you a fit?</button>
+        </div>
+
+        <div class="messages" id="messages">
+          <div class="message assistant">
+            <div class="message-avatar">AJ</div>
+            <div class="message-content">
+              I can help you draft sharper application answers using the current role and your resume context.
+              <br><br>
+              Pick a starter prompt above or ask your own question.
+            </div>
+          </div>
+        </div>
+
+        <div class="input-container">
+          <textarea id="messageInput" placeholder="Ask about this application…" rows="1"></textarea>
+          <button id="sendButton">Send</button>
+        </div>
+      </main>
+    </div>
+
+    <script src="../shared/browser-polyfill.js"></script>
+    <script type="module" src="chatbot.js"></script>
+  </body>
+</html>

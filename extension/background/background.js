@@ -1,0 +1,602 @@
+// background/background.js
+import { mergeResume } from "../utils/mergeResume.js";
+import { BACKEND_URL } from "../shared/config.js";
+
+// Backend URL from config
+const BASE_URL = BACKEND_URL;
+
+console.log("🔥 Background worker loaded.");
+
+// Storage keys
+const STORAGE_KEYS = {
+  OPENAI_API_KEY: "openaiApiKey"
+};
+
+function getStoredApiKey() {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.sync.get([STORAGE_KEYS.OPENAI_API_KEY], (result) => {
+        resolve(result?.[STORAGE_KEYS.OPENAI_API_KEY] || null);
+      });
+    } catch (err) {
+      console.error("Error getting stored API key:", err);
+      resolve(null);
+    }
+  });
+}
+
+// Unicode-safe base64 encoding
+function encodeUnicodeToBase64(str) {
+  // First encode to UTF-8 bytes, then to base64
+  const utf8Bytes = new TextEncoder().encode(str);
+  let binary = '';
+  for (let i = 0; i < utf8Bytes.length; i++) {
+    binary += String.fromCharCode(utf8Bytes[i]);
+  }
+  return btoa(binary);
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || !msg.action) return;
+
+  // =========================================
+  // LOGOUT_FROM_DASHBOARD (relay to popup)
+  // =========================================
+  if (msg.action === "LOGOUT_FROM_DASHBOARD") {
+    console.log("📩 LOGOUT_FROM_DASHBOARD received in background");
+    
+    // Forward to popup if it's open
+    try {
+      chrome.runtime.sendMessage(
+        {
+          action: "LOGOUT_FROM_DASHBOARD"
+        },
+        () => {
+          if (chrome.runtime.lastError) {
+            console.log("ℹ️  Popup not open, but logout processed in background");
+          } else {
+            console.log("✅ Logout relayed to popup");
+          }
+        }
+      );
+    } catch {
+      console.log("ℹ️  Could not relay to popup");
+    }
+    
+    // Also process locally - clear extension storage
+    chrome.storage.sync.remove([STORAGE_KEYS.OPENAI_API_KEY], () => {
+      console.log("✅ Extension storage cleared");
+    });
+    
+    sendResponse({ success: true });
+    return;
+  }
+
+  // =========================================
+  // SAVE_API_KEY_FROM_DASHBOARD
+  // =========================================
+  if (msg.action === "SAVE_API_KEY_FROM_DASHBOARD") {
+    const apiKey = typeof msg.apiKey === "string" ? msg.apiKey.trim() : "";
+    if (!apiKey) {
+      sendResponse({ ok: false, error: "No API key provided" });
+      return;
+    }
+
+    chrome.storage.sync.set({ [STORAGE_KEYS.OPENAI_API_KEY]: apiKey }, () => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+
+      console.log("✅ Dashboard API key saved to extension storage");
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  // =========================================
+  // CLEAR_API_KEY_FROM_DASHBOARD
+  // =========================================
+  if (msg.action === "CLEAR_API_KEY_FROM_DASHBOARD") {
+    chrome.storage.sync.remove([STORAGE_KEYS.OPENAI_API_KEY], () => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+
+      console.log("✅ Dashboard API key cleared from extension storage");
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  // =========================================
+  // GET_API_KEY_FOR_DASHBOARD
+  // =========================================
+  if (msg.action === "GET_API_KEY_FOR_DASHBOARD") {
+    getStoredApiKey().then((apiKey) => {
+      sendResponse({
+        ok: true,
+        hasApiKey: Boolean(apiKey),
+        apiKey: apiKey || ""
+      });
+    });
+    return true;
+  }
+
+  // =========================================
+  // SAVE_COVER_LETTER_FROM_PAGE
+  // =========================================
+  if (msg.action === "SAVE_COVER_LETTER_FROM_PAGE") {
+    const coverLetter = typeof msg.coverLetter === "string" ? msg.coverLetter : "";
+    if (!coverLetter.trim()) {
+      chrome.storage.local.remove(["lastCoverLetterBase64", "lastCoverLetterFilename"], () => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+
+        sendResponse({ ok: true });
+      });
+      return true;
+    }
+
+    chrome.storage.local.set({
+      lastCoverLetterBase64: encodeUnicodeToBase64(coverLetter),
+      lastCoverLetterFilename: "cover_letter.txt"
+    }, () => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+
+      console.log("✅ Edited cover letter saved to extension storage");
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  // =========================================
+  // CLEAR_COVER_LETTER_FROM_PAGE
+  // =========================================
+  if (msg.action === "CLEAR_COVER_LETTER_FROM_PAGE") {
+    chrome.storage.local.remove(["lastCoverLetterBase64", "lastCoverLetterFilename"], () => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+
+      console.log("✅ Edited cover letter cleared from extension storage");
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  // =========================================
+  // GET_UPLOADED_RESUME_FOR_DASHBOARD
+  // =========================================
+  if (msg.action === "GET_UPLOADED_RESUME_FOR_DASHBOARD") {
+    chrome.storage.local.get(["uploadedResume", "uploadedResumeFilename"], (res) => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+
+      sendResponse({
+        ok: true,
+        hasResume: Boolean(res.uploadedResume),
+        resume: res.uploadedResume || null,
+        filename: res.uploadedResumeFilename || ""
+      });
+    });
+    return true;
+  }
+
+  // =========================================
+  // SAVE_TAILORED_RESUME_PDF_FROM_PAGE
+  // =========================================
+  if (msg.action === "SAVE_TAILORED_RESUME_PDF_FROM_PAGE") {
+    const base64 = typeof msg.base64 === "string" ? msg.base64 : "";
+    if (!base64) {
+      sendResponse({ ok: false, error: "No resume PDF provided" });
+      return;
+    }
+
+    chrome.storage.local.set({
+      lastTailoredResumeBase64: base64,
+      lastTailoredResumeFilename: msg.filename || "Tailored_Resume.pdf",
+      lastTailoredResumeTimestamp: Date.now()
+    }, () => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  // =========================================
+  // MAKE_RESUME
+  // =========================================
+  if (msg.action === "MAKE_RESUME") {
+    console.log("📩 MAKE_RESUME triggered");
+    console.log("📋 Job description length:", msg.jobDescription?.length || 0);
+
+    (async () => {
+      try {
+        // Try to get uploaded resume first, fallback to default
+        let baseResume;
+        const stored = await chrome.storage.local.get(["uploadedResume"]);
+        
+        if (stored.uploadedResume) {
+          baseResume = stored.uploadedResume;
+          console.log("📄 Using uploaded resume");
+        } else {
+          // Load default resume from extension data
+        const url = chrome.runtime.getURL("data/resume.json");
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Failed to load default resume: ${response.status}`);
+          }
+          baseResume = await response.json();
+          console.log("📄 Using default resume");
+        }
+
+        console.log("🔑 Reading optional stored API key for tailor API...");
+        console.log("🌐 Backend URL:", BASE_URL);
+        console.log("📋 Request URL will be:", `${BASE_URL}/api/tailor`);
+        console.log("📄 Job description payload:", msg.jobDescription);
+
+        const apiKey = await getStoredApiKey();
+        const headers = { "Content-Type": "application/json" };
+        if (apiKey) {
+          headers["X-OpenAI-API-Key"] = apiKey;
+          console.log("🔐 Sending stored API key to tailor API");
+        } else {
+          console.log("🔐 No extension API key saved; server will use local or environment config");
+        }
+
+        const tailorRes = await fetch(`${BASE_URL}/api/tailor`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ 
+            jobDescription: msg.jobDescription,
+            resume: baseResume
+          })
+        });
+
+        console.log("📡 Tailor API response status:", tailorRes.status);
+
+        if (!tailorRes.ok) {
+          const errorText = await tailorRes.text();
+          console.error("❌ Tailor API error:", tailorRes.status, errorText.substring(0, 200));
+          
+          // Check if it's an HTML error page (like 403 from nginx)
+          if (errorText.includes('<html>') || errorText.includes('403') || errorText.includes('Forbidden')) {
+            // Check if it's actually nginx
+            if (errorText.includes('nginx')) {
+              throw new Error(`403 Forbidden from nginx server. This usually means:\n1. The backend URL is incorrect (currently: ${BASE_URL})\n2. There's a reverse proxy blocking the request\n3. The Next.js server isn't running\n\nPlease check that your Next.js server is running on port 3000.`);
+            }
+            throw new Error(`Backend returned ${tailorRes.status} Forbidden. Check that BASE_URL is correct in background.js (currently: ${BASE_URL}) and your backend allows requests from Chrome extensions.`);
+          }
+          
+          let errorMessage = "";
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.error || errorJson.details || "";
+          } catch {
+            errorMessage = "";
+          }
+
+          if (!errorMessage) {
+            errorMessage = errorText.replace(/<[^>]*>/g, '').trim();
+          }
+
+          if (errorMessage.includes("OpenAI API key is required")) {
+            errorMessage = "Add an API key from the dashboard key page, or configure LLM_PROVIDER=local/LLM_BASE_URL and restart the Next.js server.";
+          }
+
+          if (errorMessage.length > 300) {
+            errorMessage = errorMessage.substring(0, 300) + "...";
+          }
+
+          throw new Error(errorMessage || `Backend returned ${tailorRes.status}`);
+        }
+        const edits = await tailorRes.json();
+        console.log("✅ Tailor API success, received edits");
+        console.log("📋 Edits keys:", Object.keys(edits));
+        console.log("🎯 Skills to add:", JSON.stringify(edits.skills_to_add, null, 2));
+        console.log("📝 Cover letter present:", !!edits.cover_letter);
+        console.log("📝 Cover letter length:", edits.cover_letter?.length || 0);
+
+        // Store cover letter if present, otherwise clear old one
+        if (edits.cover_letter && edits.cover_letter.trim() !== "") {
+          const coverLetterText = edits.cover_letter;
+          const coverLetterBase64 = encodeUnicodeToBase64(coverLetterText);
+          
+          chrome.storage.local.set({
+            lastCoverLetterBase64: coverLetterBase64,
+            lastCoverLetterFilename: "cover_letter.txt"
+          });
+          
+          console.log("📝 Cover letter saved to storage. Length:", coverLetterText.length);
+        } else {
+          // Clear old cover letter if new one is not provided
+          console.log("⚠️ No cover letter in response, clearing old cover letter");
+          chrome.storage.local.remove(["lastCoverLetterBase64", "lastCoverLetterFilename"]);
+        }
+
+        // Merge
+        const mergedResume = mergeResume(baseResume, edits);
+        console.log("🔍 Merged resume skills:", JSON.stringify(mergedResume.skills, null, 2));
+
+        // Call PDF API (no API key needed for PDF generation)
+        console.log("📄 Generating PDF...");
+        const pdfRes = await fetch(`${BASE_URL}/api/export/pdf`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...mergedResume,
+            tailor_metadata: {
+              skills_to_add: edits.skills_to_add || {
+                languages: [],
+                frameworks_libraries: [],
+                tools: [],
+                professional_skills: [],
+              },
+            },
+          })
+        });
+
+        if (!pdfRes.ok) {
+          const pdfError = await pdfRes.text();
+          console.error("❌ PDF generation error:", pdfError);
+          throw new Error(`PDF generation failed: ${pdfError.substring(0, 200)}`);
+        }
+        console.log("✅ PDF generated successfully");
+
+        const buffer = await pdfRes.arrayBuffer();
+        const base64 = arrayBufferToBase64(buffer);
+
+        // Save in storage
+        chrome.storage.local.set({
+          lastTailoredResumeBase64: base64,
+          lastTailoredResumeFilename: "Tailored_Resume.pdf",
+          lastTailoredResumeTimestamp: Date.now()
+        });
+
+        console.log("📥 Tailored resume saved to storage.");
+
+        sendResponse({
+          ok: true,
+          debug: {
+            skillsToAdd: edits.skills_to_add || null,
+            mergedSkills: mergedResume.skills || null,
+          },
+        });
+      } catch (err) {
+        console.error("MAKE_RESUME Error:", err);
+        sendResponse({ error: String(err) });
+      }
+    })();
+
+    return true;
+  }
+
+  // =========================================
+  // FORCE_UPLOAD
+  // =========================================
+  if (msg.action === "FORCE_UPLOAD") {
+    console.log("📩 FORCE_UPLOAD → sending to content script (tabId:", msg.tabId, ")");
+    
+    // Helper function to send message with retry
+    const sendWithRetry = (retries = 3, delay = 200) => {
+      chrome.tabs.sendMessage(msg.tabId, { action: "FORCE_UPLOAD" }, (resp) => {
+        if (chrome.runtime.lastError) {
+          const error = chrome.runtime.lastError.message;
+          console.warn(`⚠️ Content script not ready (${retries} retries left):`, error);
+          
+          if (retries > 0) {
+            // Wait and retry - content script might still be loading
+            setTimeout(() => sendWithRetry(retries - 1, delay), delay);
+          } else {
+            // Last resort: try to inject the script
+            console.log("🔄 Attempting to inject content script...");
+            chrome.scripting.executeScript({
+              target: { tabId: msg.tabId },
+              files: ["content/content-script.js"]
+            }).then(() => {
+              console.log("✅ Content script injected, retrying message...");
+              setTimeout(() => {
+                chrome.tabs.sendMessage(msg.tabId, { action: "FORCE_UPLOAD" }, (finalResp) => {
+                  if (chrome.runtime.lastError) {
+                    console.error("❌ Still failed after injection:", chrome.runtime.lastError.message);
+                    sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+                  } else {
+                    sendResponse(finalResp || { ok: true });
+                  }
+                });
+              }, 200);
+            }).catch((err) => {
+              console.error("❌ Failed to inject content script:", err);
+              sendResponse({ ok: false, error: `Content script not available: ${error}` });
+            });
+          }
+        } else {
+          sendResponse(resp || { ok: true });
+        }
+      });
+    };
+    
+    sendWithRetry();
+    return true;
+  }
+
+  // =========================================
+  // CONVERT_COVER_LETTER_TO_PDF
+  // =========================================
+  if (msg.action === "CONVERT_COVER_LETTER_TO_PDF") {
+    (async () => {
+      try {
+        const { text } = msg;
+        if (!text) {
+          sendResponse({ ok: false, error: "No text provided" });
+          return;
+        }
+
+        console.log("📄 Converting cover letter to PDF via backend:", BASE_URL);
+        
+        // Convert text to PDF using backend API
+        const response = await fetch(`${BASE_URL}/api/export/cover-letter`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        }).catch((fetchErr) => {
+          console.error("❌ Fetch error:", fetchErr);
+          throw new Error(`Failed to connect to backend at ${BASE_URL}. Is the server running? Error: ${fetchErr.message}`);
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          throw new Error(`Backend returned ${response.status}: ${errorText}`);
+        }
+
+        const pdfBlob = await response.blob();
+        const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+        
+        // Convert to base64
+        const bytes = new Uint8Array(pdfArrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const pdfBase64 = btoa(binary);
+
+        console.log("✅ Cover letter converted to PDF successfully");
+        sendResponse({ ok: true, base64: pdfBase64 });
+      } catch (err) {
+        console.error("❌ Cover letter conversion error:", err);
+        sendResponse({ ok: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  // =========================================
+  // FORCE_UPLOAD_COVER
+  // =========================================
+  if (msg.action === "FORCE_UPLOAD_COVER") {
+    console.log("📩 FORCE_UPLOAD_COVER → sending to content script (tabId:", msg.tabId, ")");
+    
+    // Helper function to send message with retry
+    const sendWithRetry = (retries = 3, delay = 200) => {
+      chrome.tabs.sendMessage(msg.tabId, { action: "FORCE_UPLOAD_COVER" }, (resp) => {
+        if (chrome.runtime.lastError) {
+          const error = chrome.runtime.lastError.message;
+          console.warn(`⚠️ Content script not ready (${retries} retries left):`, error);
+          
+          if (retries > 0) {
+            // Wait and retry - content script might still be loading
+            setTimeout(() => sendWithRetry(retries - 1, delay), delay);
+          } else {
+            // Last resort: try to inject the script
+            console.log("🔄 Attempting to inject content script...");
+            chrome.scripting.executeScript({
+              target: { tabId: msg.tabId },
+              files: ["content/content-script.js"]
+            }).then(() => {
+              console.log("✅ Content script injected, retrying message...");
+              setTimeout(() => {
+                chrome.tabs.sendMessage(msg.tabId, { action: "FORCE_UPLOAD_COVER" }, (finalResp) => {
+                  if (chrome.runtime.lastError) {
+                    console.error("❌ Still failed after injection:", chrome.runtime.lastError.message);
+                    sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+                  } else {
+                    sendResponse(finalResp || { ok: true });
+                  }
+                });
+              }, 200);
+            }).catch((err) => {
+              console.error("❌ Failed to inject content script:", err);
+              sendResponse({ ok: false, error: `Content script not available: ${error}` });
+            });
+          }
+        } else {
+          sendResponse(resp || { ok: true });
+        }
+      });
+    };
+    
+    sendWithRetry();
+    return true;
+  }
+
+  // =========================================
+  // GET_TAILORED_RESUME
+  // =========================================
+  if (msg.action === "GET_TAILORED_RESUME") {
+    chrome.storage.local.get(
+      ["lastTailoredResumeBase64", "lastTailoredResumeFilename"],
+      (res) => {
+        sendResponse({
+          base64: res.lastTailoredResumeBase64 || null,
+          filename: res.lastTailoredResumeFilename || "Resume.pdf"
+        });
+      }
+    );
+    return true;
+  }
+
+  // =========================================
+  // GET_COVER_LETTER
+  // =========================================
+  if (msg.action === "GET_COVER_LETTER") {
+    chrome.storage.local.get(
+      ["lastCoverLetterBase64", "lastCoverLetterFilename"],
+      (res) => {
+        sendResponse({
+          base64: res.lastCoverLetterBase64 || null,
+          filename: res.lastCoverLetterFilename || "cover_letter.txt"
+        });
+      }
+    );
+    return true;
+  }
+
+  // =========================================
+  // UPLOAD_RESUME
+  // =========================================
+  if (msg.action === "UPLOAD_RESUME") {
+    (async () => {
+      try {
+        const { resumeData, filename } = msg;
+        
+        // Store the resume JSON
+        chrome.storage.local.set({
+          uploadedResume: resumeData,
+          uploadedResumeFilename: filename || "resume.json"
+        });
+
+        sendResponse({ ok: true });
+      } catch (err) {
+        console.error("UPLOAD_RESUME Error:", err);
+        sendResponse({ error: String(err) });
+      }
+    })();
+    return true;
+  }
+
+});
+
+function arrayBufferToBase64(buffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
+
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}

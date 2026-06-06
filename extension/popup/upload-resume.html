@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>AutoJobs Resume Upload</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body class="upload-page">
+    <div class="upload-shell">
+      <header class="upload-header">
+        <p class="eyebrow">AutoJobs extension</p>
+        <h1 class="page-title">Cache a resume for this browser.</h1>
+        <p class="page-copy">
+          Choose a PDF to parse and store for tailoring, previewing, and upload actions inside the extension.
+        </p>
+      </header>
+
+      <main class="upload-main">
+        <section class="surface-panel surface-panel-muted">
+          <label for="resumeFile" class="field-label">Resume PDF</label>
+          <input type="file" id="resumeFile" class="file-input" accept=".pdf,application/pdf">
+          <div id="status" class="status"></div>
+          <p class="close-note">This window closes automatically after a successful upload.</p>
+        </section>
+      </main>
+    </div>
+
+    <script src="../shared/browser-polyfill.js"></script>
+    <script type="module" src="upload-resume.js"></script>
+  </body>
+</html>

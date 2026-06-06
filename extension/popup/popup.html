@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>AutoJobs Extension</title>
+    <link rel="stylesheet" href="error-notifications.css">
+    <link rel="stylesheet" href="popup.css">
+  </head>
+
+  <body class="popup-page">
+    <div class="popup-shell">
+      <header class="popup-header">
+        <div class="popup-topline">
+          <div class="title-block">
+            <p class="eyebrow">AutoJobs extension</p>
+            <h1 class="page-title">Tailor the current role fast.</h1>
+          </div>
+
+          <div class="header-tools">
+            <span id="apiKeyState" class="header-badge">Dashboard key</span>
+          </div>
+        </div>
+
+        <p class="page-copy">
+          Keep the popup focused: tailor the current role, preview files, and upload them into the page. Manage model keys from the dashboard.
+        </p>
+      </header>
+
+      <main class="popup-main">
+        <div class="primary-actions">
+          <button id="generate" class="action-button action-button-primary">
+            Tailor current role
+          </button>
+          <button id="dashboardBtn" class="action-button action-button-secondary">
+            Open dashboard
+          </button>
+        </div>
+
+        <section class="surface-panel surface-panel-muted">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Resume cache</p>
+              <h2 class="section-title">Use one PDF across applications.</h2>
+            </div>
+            <button id="clearResume" class="small-button small-button-danger">Clear</button>
+          </div>
+
+          <p class="section-copy">
+            Upload a PDF once to cache it for tailoring, previewing, and page uploads in this browser.
+          </p>
+
+          <label for="resumeFile" class="field-label">Resume PDF</label>
+          <input type="file" id="resumeFile" class="file-input" accept=".pdf,application/pdf">
+          <div id="resumeStatus" class="status"></div>
+        </section>
+
+        <section class="surface-panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Preview</p>
+              <h2 class="section-title">Check the draft before uploading.</h2>
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button id="previewResume" class="action-button action-button-secondary">Preview resume</button>
+            <button id="previewCoverLetter" class="action-button action-button-secondary">Preview cover letter</button>
+          </div>
+          <div id="downloadStatus" class="status"></div>
+        </section>
+
+        <section class="surface-panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Upload to page</p>
+              <h2 class="section-title">Send files into the current application.</h2>
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button id="uploadResume" class="action-button action-button-secondary">Upload resume</button>
+            <button id="uploadCoverLetter" class="action-button action-button-secondary">Upload cover letter</button>
+          </div>
+        </section>
+
+        <section class="surface-panel surface-panel-muted">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Application helper</p>
+              <h2 class="section-title">Draft sharper written answers.</h2>
+            </div>
+          </div>
+
+          <p class="section-copy">
+            Open the helper with the current job context and your saved resume to shape practical responses.
+          </p>
+
+          <button id="openChatbot" class="action-button action-button-subtle">Open helper</button>
+        </section>
+      </main>
+    </div>
+
+    <script src="../shared/browser-polyfill.js"></script>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

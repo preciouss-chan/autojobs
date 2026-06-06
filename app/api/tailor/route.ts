@@ -1,0 +1,687 @@
+import fs from "fs";
+import path from "path";
+import { NextResponse } from "next/server";
+import type OpenAI from "openai";
+import {
+  ErrorResponseSchema,
+  StructuredJobSignalsSchema,
+  TailorRequestSchema,
+  TailorResponseSchema,
+} from "@/app/lib/schemas";
+import type {
+  JobRequirements,
+  Resume,
+  StructuredJobSignals,
+  TailorResponse,
+} from "@/app/lib/schemas";
+import { createLlmClient } from "@/app/lib/llm-client";
+import { LLM_CONFIG } from "@/app/lib/llm-config";
+import {
+  acceptBulletRewrites,
+  analyzeAtsOptimization,
+  applyResponseToResume,
+  buildBulletAnalysis,
+  buildBulletEditMaps,
+  buildChangedBullets,
+  buildImprovementNotes,
+  findMissingKeywords,
+  formatResumeAsText,
+  inferSupportedSkillsToAdd,
+  parseResumeForTailoring,
+  selectBulletsForRewrite,
+} from "@/app/lib/tailor/pipeline";
+import { checkRateLimit, getIdentifierFromRequest, RATE_LIMIT_PRESETS } from "@/lib/rate-limit";
+const resumePath = path.join(process.cwd(), "data", "resume.json");
+
+type TailoringDraft = {
+  updated_summary: string;
+  bullet_rewrites: Array<{
+    id: string;
+    revised: string;
+    reason?: string;
+    matched_signals?: string[];
+  }>;
+  cover_letter: string;
+};
+
+const MIN_COVER_LETTER_WORDS = 180;
+const GENERIC_COVER_LETTER_PHRASES = [
+  "i am writing to express my interest",
+  "i am excited about the opportunity",
+  "solid foundation",
+  "hands-on experience",
+  "eager to contribute",
+  "thank you for considering my application",
+  "i look forward to the opportunity",
+  "add value to your team",
+];
+
+function countWords(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function countGenericPhrases(value: string): number {
+  const normalized = value.toLowerCase();
+  return GENERIC_COVER_LETTER_PHRASES.filter((phrase) => normalized.includes(phrase)).length;
+}
+
+function sanitizeCoverLetter(rawText: string, candidateName: string): string {
+  const cleaned = rawText
+    .replace(/\[your name\]/gi, candidateName)
+    .replace(/your name/gi, candidateName)
+    .replace(/\r/g, "")
+    .trim();
+
+  const paragraphs = cleaned
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  let normalized = paragraphs.join("\n\n");
+
+  normalized = normalized.replace(/^(dear hiring manager,?\s*)+/i, "").trim();
+
+  normalized = normalized
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(
+      /(?:\n\n|\n)?(?:sincerely,?|best,?|kind regards,?|thanks,?)(?:\s+[A-Za-z][^\n]*)?(?:\n+[A-Za-z][^\n]*)*\s*$/i,
+      ""
+    )
+    .trim();
+
+  if (!normalized) {
+    normalized = "Thank you for considering my application.";
+  }
+
+  return `Dear Hiring Manager,\n\n${normalized}\n\nSincerely,\n${candidateName}`;
+}
+
+async function polishCoverLetterTone(
+  client: OpenAI,
+  model: string,
+  coverLetter: string,
+  resume: Resume,
+  signals: StructuredJobSignals,
+  candidateName: string
+): Promise<string> {
+  const companyName = signals.company_name?.trim();
+  const polishPrompt = `Rewrite this cover letter so it sounds more human, relaxed, and believable without changing the facts.
+
+Candidate resume evidence:
+${buildResumeEvidenceContext(resume)}
+
+Structured job signals:
+${JSON.stringify(signals, null, 2)}
+
+Current cover letter:
+${coverLetter}
+
+Rules:
+- Keep all claims truthful and grounded in the resume.
+- Keep the overall length roughly similar.
+- Keep 2-3 body paragraphs before the closing.
+- Start with exactly: Dear Hiring Manager,
+- Mention ${companyName || "the company"} naturally only if the company name is provided.
+- Avoid generic phrases like "I am writing to express my interest," "solid foundation," "hands-on experience," "eager to contribute," and "add value to your team."
+- Replace broad claims with concrete, resume-backed specifics.
+- Use simple, clear language instead of polished corporate wording.
+- Make it sound like a smart candidate talking plainly and confidently.
+- Avoid sounding ceremonial, overly polished, or salesy.
+- Prefer shorter, more natural sentences over long complex ones.
+- End with exactly:
+Sincerely,
+${candidateName}
+
+Return only the full cover letter text.`;
+
+  const response = await client.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: polishPrompt }],
+    temperature: LLM_CONFIG.DETERMINISTIC.temperature,
+  });
+
+  return sanitizeCoverLetter(response.choices[0]?.message?.content || coverLetter, candidateName);
+}
+
+function buildResumeEvidenceContext(resume: Resume): string {
+  const lines: string[] = [];
+
+  if (resume.summary.trim()) {
+    lines.push(`Summary: ${resume.summary.trim()}`);
+  }
+
+  if (resume.skills.languages.length > 0) {
+    lines.push(`Languages: ${resume.skills.languages.join(", ")}`);
+  }
+  if (resume.skills.frameworks_libraries.length > 0) {
+    lines.push(`Frameworks/Libraries: ${resume.skills.frameworks_libraries.join(", ")}`);
+  }
+  if (resume.skills.tools.length > 0) {
+    lines.push(`Technologies: ${resume.skills.tools.join(", ")}`);
+  }
+  if (resume.skills.professional_skills.length > 0) {
+    lines.push(`Professional Skills: ${resume.skills.professional_skills.join(", ")}`);
+  }
+
+  resume.experience.forEach((item) => {
+    lines.push(`${item.role} | ${item.company} | ${item.dates}`);
+    item.bullets.forEach((bullet) => lines.push(`- ${bullet}`));
+  });
+
+  resume.projects.forEach((item) => {
+    lines.push(`${item.name} | ${item.date}`);
+    if (item.technologies.length > 0) {
+      lines.push(`Technologies: ${item.technologies.join(", ")}`);
+    }
+    item.bullets.forEach((bullet) => lines.push(`- ${bullet}`));
+  });
+
+  return lines.join("\n");
+}
+
+function buildRequirementsContext(jobRequirements?: JobRequirements): string {
+  if (!jobRequirements) {
+    return "";
+  }
+
+  return [
+    "Existing extracted requirements:",
+    `- Title: ${jobRequirements.title}`,
+    `- Seniority: ${jobRequirements.seniority_level}`,
+    `- Required skills: ${jobRequirements.required_skills.join(", ")}`,
+    `- Nice to have: ${jobRequirements.nice_to_have_skills.join(", ")}`,
+    `- Tools/frameworks: ${jobRequirements.required_tools_frameworks.join(", ")}`,
+    `- Responsibilities: ${jobRequirements.key_responsibilities.join(" | ")}`,
+    `- Experience years: ${jobRequirements.experience_years ?? "not specified"}`,
+    `- Domain: ${jobRequirements.domain}`,
+    `- Team focus: ${jobRequirements.team_focus}`,
+  ].join("\n");
+}
+
+function sanitizeCompanyName(value: string): string {
+  return value
+    .replace(/^company\s*[:\-]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqTerms(values: string[]): string[] {
+  return Array.from(
+    new Map(
+      values
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => [value.toLowerCase(), value])
+    ).values()
+  );
+}
+
+function extractSectionLines(jobDescription: string, headings: string[]): string[] {
+  const lines = jobDescription.split(/\r?\n/);
+  const normalizedHeadings = headings.map((heading) => heading.toLowerCase());
+  const results: string[] = [];
+  let inSection = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const normalized = line.toLowerCase().replace(/[:\-]+$/, "");
+
+    const startsTargetSection = normalizedHeadings.some((heading) => normalized === heading);
+    const startsNewSection =
+      /^[a-z][a-z\s/&-]{2,40}:?$/i.test(line) &&
+      !line.startsWith("-") &&
+      !line.startsWith("*") &&
+      !/^\d+\./.test(line);
+
+    if (startsTargetSection) {
+      inSection = true;
+      continue;
+    }
+
+    if (inSection && startsNewSection) {
+      break;
+    }
+
+    if (!inSection) {
+      continue;
+    }
+
+    if (!line) {
+      continue;
+    }
+
+    results.push(line.replace(/^[-*•]\s*/, "").replace(/^\d+\.\s*/, ""));
+  }
+
+  return results;
+}
+
+function extractQualificationSectionTerms(jobDescription: string): {
+  minimum: string[];
+  preferred: string[];
+} {
+  const minimumLines = extractSectionLines(jobDescription, [
+    "minimum qualifications",
+    "basic qualifications",
+    "required qualifications",
+    "requirements",
+  ]);
+  const preferredLines = extractSectionLines(jobDescription, [
+    "preferred qualifications",
+    "preferred skills",
+    "nice to have",
+    "bonus qualifications",
+  ]);
+
+  const splitTerms = (lines: string[]): string[] => {
+    const terms: string[] = [];
+    for (const line of lines) {
+      const cleaned = line
+        .replace(/^experience with\s+/i, "")
+        .replace(/^proficiency in\s+/i, "")
+        .replace(/^knowledge of\s+/i, "")
+        .replace(/^ability to\s+/i, "")
+        .replace(/^familiarity with\s+/i, "")
+        .replace(/\.$/, "");
+
+      const parts = cleaned.split(/,|\band\b|\bor\b|\//i).map((part) => part.trim());
+      for (const part of parts) {
+        if (part.length < 3) {
+          continue;
+        }
+        terms.push(part);
+      }
+    }
+    return uniqTerms(terms);
+  };
+
+  return {
+    minimum: splitTerms(minimumLines),
+    preferred: splitTerms(preferredLines),
+  };
+}
+
+async function extractStructuredJobSignals(
+  client: OpenAI,
+  model: string,
+  jobDescription: string,
+  jobRequirements?: JobRequirements
+): Promise<StructuredJobSignals> {
+  const qualificationTerms = extractQualificationSectionTerms(jobDescription);
+  const prompt = `Extract structured hiring signals from this job description.
+
+${buildRequirementsContext(jobRequirements)}
+
+Job description:
+${jobDescription}
+
+Return only valid JSON with this exact shape:
+{
+  "company_name": "",
+  "title": "",
+  "seniority_signals": [""],
+  "required_skills": [""],
+  "preferred_skills": [""],
+  "minimum_qualification_keywords": [""],
+  "preferred_qualification_keywords": [""],
+  "tools_technologies": [""],
+  "responsibilities": [""],
+  "domain_keywords": [""],
+  "years_experience": null,
+  "team_focus": ""
+}
+
+Rules:
+- Only extract requirements explicitly stated or strongly implied.
+- Keep phrases short and ATS-friendly.
+- Put optional or bonus skills only in preferred_skills.
+- Heavily weight the minimum qualifications and preferred qualifications sections when extracting keywords.
+- minimum_qualification_keywords should capture important ATS terms from required/basic/minimum qualifications.
+- preferred_qualification_keywords should capture important ATS terms from preferred/nice-to-have qualifications.
+- tools_technologies should contain named tools, platforms, frameworks, libraries, and databases.
+- responsibilities should be action-oriented phrases.
+- domain_keywords should describe industry/problem-space terms.
+- company_name should be the employer name if it is identifiable from the description, otherwise "".
+- Do not invent requirements.`;
+
+  const qualificationContext = `
+
+Detected qualification-section hints from the raw posting:
+- Minimum/basic qualifications terms: ${qualificationTerms.minimum.join(", ") || "none detected"}
+- Preferred qualifications terms: ${qualificationTerms.preferred.join(", ") || "none detected"}`;
+
+  const response = await client.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: `${prompt}${qualificationContext}` }],
+    temperature: LLM_CONFIG.DETERMINISTIC.temperature,
+    response_format: { type: "json_object" },
+  });
+
+  const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+  const validated = StructuredJobSignalsSchema.parse(parsed);
+  return {
+    ...validated,
+    company_name: sanitizeCompanyName(validated.company_name),
+    required_skills: uniqTerms([
+      ...validated.required_skills,
+      ...validated.minimum_qualification_keywords,
+      ...qualificationTerms.minimum,
+    ]),
+    preferred_skills: uniqTerms([
+      ...validated.preferred_skills,
+      ...validated.preferred_qualification_keywords,
+      ...qualificationTerms.preferred,
+    ]),
+    minimum_qualification_keywords: uniqTerms([
+      ...validated.minimum_qualification_keywords,
+      ...qualificationTerms.minimum,
+    ]),
+    preferred_qualification_keywords: uniqTerms([
+      ...validated.preferred_qualification_keywords,
+      ...qualificationTerms.preferred,
+    ]),
+  };
+}
+
+async function generateTailoringDraft(
+  client: OpenAI,
+  model: string,
+  resume: Resume,
+  signals: StructuredJobSignals,
+  selectedBullets: ReturnType<typeof selectBulletsForRewrite>
+): Promise<TailoringDraft> {
+  const candidateName = resume.name?.trim() || "Candidate";
+  const companyName = signals.company_name?.trim();
+  const bulletInventory = selectedBullets.map((bullet) => ({
+    id: bullet.id,
+    section: bullet.section,
+    label: bullet.sectionLabel,
+    index: bullet.index,
+    original: bullet.originalText,
+    matched_signals: bullet.matchedSignals,
+    reasons: bullet.reasons,
+    has_metrics: bullet.hasMetrics,
+  }));
+
+  const companyInstruction = companyName
+    ? `Company name to mention naturally in the cover letter: ${companyName}`
+    : "Company name was not confidently identified from the job description.";
+
+  const prompt = `You are improving a resume conservatively for ATS alignment.
+
+Candidate resume evidence:
+${buildResumeEvidenceContext(resume)}
+
+Structured job signals:
+${JSON.stringify(signals, null, 2)}
+
+Selected bullets eligible for rewriting:
+${JSON.stringify(bulletInventory, null, 2)}
+
+Tasks:
+1. Rewrite only the selected bullets.
+2. Update the summary in 2-3 sentences so it is specific, truthful, and ATS-friendly.
+3. Write a specific, polished cover letter.
+
+Candidate name for the signature: ${candidateName}
+${companyInstruction}
+
+Non-negotiable rules:
+- Do not add new tools, technologies, metrics, achievements, responsibilities, or industries.
+- Do not add a keyword unless that exact idea is already supported by the same bullet or the resume summary.
+- Keep every rewritten bullet as a single plain-text bullet line.
+- Preserve the factual meaning of the original bullet.
+- Prefer minimal edits, stronger action verbs, and clearer outcomes.
+- Quantify and show impact on bullet points if not done already.
+- If a bullet is already strong, return it unchanged.
+- Keep the output clean and ATS-friendly.
+- Make the summary ATS-aware: mirror the target title and strongest supported hard skills naturally, without copying the job description verbatim.
+- Favor keywords that appear in the title, required skills, tools/technologies, and recurring responsibilities.
+- Balance hard skills with soft-skills.
+- Add skills_to_add to the skills section.
+- If a company name is provided, mention ${companyName || "the employer"} naturally in the opening or closing so the letter feels specific to that application.
+- If no company name is provided, do not invent one.
+- Make the cover letter roughly 180-260 words.
+- Start the cover letter with exactly: Dear Hiring Manager,
+- Paragraph 1: specific interest in the role and why this company/team is compelling.
+- Paragraph 2: one concrete, relevant example from experience or projects with technologies and outcomes already supported by the resume.
+- Paragraph 3: optional short closing paragraph about what else you would bring or why the team is a fit.
+- Avoid generic filler like "I am writing to express my interest" or "I am excited about the opportunity" unless the sentence contains real specifics.
+- Keep the tone warm, direct, and confident rather than overly formal or grandiose.
+- Use simple words and natural phrasing a strong candidate would actually send.
+- Do not sound like marketing copy or an essay.
+- End the cover letter with exactly:
+  Sincerely,
+  ${candidateName}
+- Never use placeholders like [Your Name], [Name], or Candidate Name.
+
+Return only valid JSON with this shape:
+{
+  "updated_summary": "",
+  "bullet_rewrites": [
+    {
+      "id": "experience:Company:0",
+      "revised": "",
+      "reason": "",
+      "matched_signals": [""]
+    }
+  ],
+  "cover_letter": ""
+}`;
+
+  const response = await client.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: prompt }],
+    temperature: LLM_CONFIG.DETERMINISTIC.temperature,
+    response_format: { type: "json_object" },
+  });
+
+  const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+  let coverLetter = sanitizeCoverLetter(String(parsed.cover_letter || "").trim(), candidateName);
+
+  if (countWords(coverLetter) < MIN_COVER_LETTER_WORDS) {
+    const expandPrompt = `Expand this cover letter so it feels complete and job-specific without changing the facts.
+
+Candidate resume evidence:
+${buildResumeEvidenceContext(resume)}
+
+Structured job signals:
+${JSON.stringify(signals, null, 2)}
+
+Current cover letter draft:
+${coverLetter}
+
+Requirements:
+- Keep all claims truthful and grounded in the resume.
+- Mention ${companyName || "the company"} naturally only if supported by the extracted company name.
+- Expand to roughly 180-260 words.
+- Keep 2-3 body paragraphs before the closing.
+- Start with exactly: Dear Hiring Manager,
+- Add more specificity, detail, and motivation; do not add fake achievements.
+- Keep the tone natural, conversational, and easy to read.
+- Use simpler wording and avoid complex or overly polished phrases.
+- End with exactly:
+Sincerely,
+${candidateName}
+
+Return only the full cover letter text.`;
+
+    const expandedResponse = await client.chat.completions.create({
+      model,
+      messages: [{ role: "user", content: expandPrompt }],
+      temperature: LLM_CONFIG.DETERMINISTIC.temperature,
+    });
+
+    coverLetter = sanitizeCoverLetter(
+      expandedResponse.choices[0]?.message?.content || coverLetter,
+      candidateName
+    );
+  }
+
+  if (countGenericPhrases(coverLetter) >= 2) {
+    coverLetter = await polishCoverLetterTone(
+      client,
+      model,
+      coverLetter,
+      resume,
+      signals,
+      candidateName
+    );
+  }
+
+  return {
+    updated_summary: String(parsed.updated_summary || "").trim(),
+    bullet_rewrites: Array.isArray(parsed.bullet_rewrites) ? parsed.bullet_rewrites : [],
+    cover_letter: coverLetter,
+  };
+}
+
+export const runtime = "nodejs";
+
+export async function POST(req: Request): Promise<NextResponse> {
+  try {
+    const identifier = getIdentifierFromRequest(req);
+    const rateLimitResult = checkRateLimit(
+      identifier,
+      "tailor",
+      RATE_LIMIT_PRESETS.TAILOR.limit,
+      RATE_LIMIT_PRESETS.TAILOR.windowMs
+    );
+
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          message: `Too many requests. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter,
+        },
+        { status: 429, headers: { "Retry-After": String(rateLimitResult.retryAfter) } }
+      );
+    }
+
+    const llm = createLlmClient(req.headers.get("X-OpenAI-API-Key"));
+    if (!llm.ok) {
+      return NextResponse.json(
+        ErrorResponseSchema.parse({
+          error: llm.error,
+        }),
+        { status: 401 }
+      );
+    }
+
+    const { client, model } = llm;
+    const body = await req.json();
+    const parsedRequest = TailorRequestSchema.safeParse(body);
+
+    if (!parsedRequest.success) {
+      return NextResponse.json(
+        ErrorResponseSchema.parse({
+          error: "Invalid tailor request",
+          details: parsedRequest.error.message,
+        }),
+        { status: 400 }
+      );
+    }
+
+    const { jobDescription, jobRequirements, resume: providedResume } = parsedRequest.data;
+
+    let resume = providedResume;
+    if (!resume && fs.existsSync(resumePath)) {
+      resume = JSON.parse(fs.readFileSync(resumePath, "utf8")) as Resume;
+    }
+
+    if (!resume) {
+      return NextResponse.json(
+        ErrorResponseSchema.parse({
+          error: "No resume provided and default resume file not found.",
+        }),
+        { status: 400 }
+      );
+    }
+
+    const signals = await extractStructuredJobSignals(client, model, jobDescription, jobRequirements);
+    const parsedResume = parseResumeForTailoring(resume, signals);
+    const bulletAnalysis = buildBulletAnalysis(parsedResume);
+    const selectedBullets = selectBulletsForRewrite(parsedResume);
+    const tailoringDraft = await generateTailoringDraft(client, model, resume, signals, selectedBullets);
+    const acceptedRewrites = acceptBulletRewrites(
+      selectedBullets,
+      Object.fromEntries(
+        tailoringDraft.bullet_rewrites.map((item) => [item.id, item])
+      ),
+      signals
+    );
+    const changedBullets = buildChangedBullets(selectedBullets, acceptedRewrites);
+    const editMaps = buildBulletEditMaps(resume, acceptedRewrites);
+    const skillsToAdd = inferSupportedSkillsToAdd(resume, signals);
+    const missingKeywords = findMissingKeywords(resume, signals);
+
+    const responseDraft: TailorResponse = {
+      updated_summary: tailoringDraft.updated_summary || resume.summary,
+      experience_edits: editMaps.experienceEdits,
+      project_edits: editMaps.projectEdits,
+      skills_reframing: changedBullets.map((item) => ({
+        category: item.section === "projects" ? "tools" : "experience",
+        original: item.original,
+        tailored: item.revised,
+        evidence: item.section_label,
+      })),
+      skills_to_add: skillsToAdd,
+      job_signals: signals,
+      bullet_analysis: bulletAnalysis,
+      changed_bullets: changedBullets,
+      missing_keywords: missingKeywords,
+      ats_analysis: {
+        score: 0,
+        target_job_title: "",
+        title_alignment: "weak",
+        matched_keywords: [],
+        keyword_gaps: [],
+        section_coverage: {
+          summary: [],
+          skills: [],
+          experience: [],
+          projects: [],
+        },
+        formatting_warnings: [],
+        optimization_tips: [],
+      },
+      improvement_notes: [],
+      revised_resume_text: "",
+      cover_letter: tailoringDraft.cover_letter,
+    };
+
+    const revisedResume = applyResponseToResume(resume, responseDraft);
+    responseDraft.ats_analysis = analyzeAtsOptimization(
+      revisedResume,
+      signals,
+      missingKeywords
+    );
+    responseDraft.revised_resume_text = formatResumeAsText(revisedResume);
+    responseDraft.improvement_notes = buildImprovementNotes({
+      changedBullets,
+      missingKeywords,
+      skillsToAdd,
+      updatedSummary: responseDraft.updated_summary,
+      atsAnalysis: responseDraft.ats_analysis,
+    });
+
+    const validated = TailorResponseSchema.parse(responseDraft);
+
+    return NextResponse.json(validated);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorStack = err instanceof Error ? err.stack || "" : "";
+
+    console.error("TAILOR ERROR:", err);
+
+    return NextResponse.json(
+      ErrorResponseSchema.parse({
+        error: "Server error",
+        details: errorMessage,
+        ...(process.env.NODE_ENV === "development" && { stack: errorStack }),
+      }),
+      { status: 500 }
+    );
+  }
+}
